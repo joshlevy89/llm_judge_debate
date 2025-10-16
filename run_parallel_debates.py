@@ -34,9 +34,14 @@ def run_single_debate_process(debate_id: int, output_dir: str, seed: int = None,
     Returns:
         subprocess.Popen object
     """
-    # Create log file for this debate
+    # Generate unique run identifier
+    import uuid
+    run_id = str(uuid.uuid4())[:8]  # Short UUID for readability
+    
+    # Create log file for this debate with unique identifier
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    log_file = Path(output_dir) / f'debate_{debate_id}_{timestamp}.log'
+    seed_str = f'seed{seed}_' if seed is not None else ''
+    log_file = Path(output_dir) / f'debate_{debate_id}_{seed_str}{run_id}_{timestamp}.log'
     
     # Build command
     cmd = [
@@ -45,6 +50,7 @@ def run_single_debate_process(debate_id: int, output_dir: str, seed: int = None,
         'run_single_debate.py',
         '--output-dir', output_dir,
         '--max-turns', str(max_turns),
+        '--run-id', run_id,  # Pass unique identifier
     ]
     
     if seed is not None:
@@ -54,7 +60,7 @@ def run_single_debate_process(debate_id: int, output_dir: str, seed: int = None,
         cmd.append('--quiet')
     
     # Launch process with output redirected to log file
-    print(f"[Debate {debate_id}] Starting... (log: {log_file})")
+    print(f"[Debate {debate_id}] Starting... (run_id: {run_id}, log: {log_file})")
     
     with open(log_file, 'w') as f:
         process = subprocess.Popen(
@@ -126,7 +132,8 @@ def print_aggregate_stats(master_csv: str):
     total = len(rows)
     debater_correct = sum(1 for r in rows if r.get('debater_direct_correct') == 'True')
     judge_direct_correct = sum(1 for r in rows if r.get('judge_direct_correct') == 'True')
-    judge_after_debate_correct = sum(1 for r in rows if r.get('judge_after_debate_correct') == 'True')
+    judge_after_interactive_correct = sum(1 for r in rows if r.get('interactive_judge_after_debate_correct') == 'True')
+    judge_after_non_interactive_correct = sum(1 for r in rows if r.get('non_interactive_judge_after_debate_correct') == 'True')
     
     print("\n" + "="*70)
     print("AGGREGATE STATISTICS")
@@ -134,7 +141,8 @@ def print_aggregate_stats(master_csv: str):
     print(f"Total debates: {total}")
     print(f"Debater direct QA accuracy: {debater_correct}/{total} ({100*debater_correct/total:.1f}%)")
     print(f"Judge direct QA accuracy: {judge_direct_correct}/{total} ({100*judge_direct_correct/total:.1f}%)")
-    print(f"Judge after debate accuracy: {judge_after_debate_correct}/{total} ({100*judge_after_debate_correct/total:.1f}%)")
+    print(f"Judge after interactive debate accuracy: {judge_after_interactive_correct}/{total} ({100*judge_after_interactive_correct/total:.1f}%)")
+    print(f"Judge after non-interactive debate accuracy: {judge_after_non_interactive_correct}/{total} ({100*judge_after_non_interactive_correct/total:.1f}%)")
     print("="*70)
 
 
