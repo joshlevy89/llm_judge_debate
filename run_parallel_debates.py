@@ -19,7 +19,7 @@ from typing import List, Dict
 import glob
 
 
-def run_single_debate_process(debate_id: int, output_dir: str, seed: int = None, 
+def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str, seed: int = None, 
                                max_turns: int = 20, quiet: bool = False) -> subprocess.Popen:
     """
     Launch a single debate as a subprocess.
@@ -38,17 +38,13 @@ def run_single_debate_process(debate_id: int, output_dir: str, seed: int = None,
     import uuid
     run_id = str(uuid.uuid4())[:8]  # Short UUID for readability
     
-    # Create log file for this debate with unique identifier
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    seed_str = f'seed{seed}_' if seed is not None else ''
-    log_file = Path(output_dir) / f'debate_{debate_id}_{seed_str}{run_id}_{timestamp}.log'
-    
     # Build command
     cmd = [
         sys.executable,  # Use same Python interpreter
         '-u',  # Unbuffered output for real-time logging
         'run_single_debate.py',
         '--output-dir', output_dir,
+        '--csv-filename', csv_filename,
         '--max-turns', str(max_turns),
         '--run-id', run_id,  # Pass unique identifier
     ]
@@ -59,62 +55,18 @@ def run_single_debate_process(debate_id: int, output_dir: str, seed: int = None,
     if quiet:
         cmd.append('--quiet')
     
-    # Launch process with output redirected to log file
-    print(f"[Debate {debate_id}] Starting... (run_id: {run_id}, log: {log_file})")
+    # Launch process with output redirected to devnull (we save everything in detail.txt files)
+    print(f"[Debate {debate_id}] Starting... (run_id: {run_id})")
     
-    with open(log_file, 'w') as f:
-        process = subprocess.Popen(
-            cmd,
-            stdout=f,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1  # Line buffered
-        )
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        bufsize=1  # Line buffered
+    )
     
-    return process, log_file
-
-
-def aggregate_results(output_dir: str, master_csv: str = None) -> str:
-    """
-    Aggregate all individual debate CSV results into a master CSV.
-    
-    Args:
-        output_dir: Directory containing debate_results_summary.csv
-        master_csv: Path to master CSV file (optional)
-        
-    Returns:
-        Path to master CSV file
-    """
-    if master_csv is None:
-        master_csv = Path(output_dir) / 'master_results_summary.csv'
-    
-    source_csv = Path(output_dir) / 'debate_results_summary.csv'
-    
-    if not source_csv.exists():
-        print(f"Warning: No results file found at {source_csv}")
-        return None
-    
-    # Read all rows from source CSV
-    with open(source_csv, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
-        fieldnames = reader.fieldnames
-    
-    if not rows:
-        print("Warning: No results to aggregate")
-        return None
-    
-    # Write to master CSV (append mode)
-    file_exists = Path(master_csv).exists()
-    
-    with open(master_csv, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        if not file_exists:
-            writer.writeheader()
-        writer.writerows(rows)
-    
-    print(f"\nAggregated {len(rows)} result(s) to {master_csv}")
-    return master_csv
+    return process, run_id
 
 
 def print_aggregate_stats(master_csv: str):
@@ -146,17 +98,14 @@ def print_aggregate_stats(master_csv: str):
     print("="*70)
 
 
-def tail_log_hint(log_files: List[Path]):
-    """Print helpful commands for tailing log files."""
+def print_debate_progress_hint():
+    """Print helpful info about monitoring debates."""
     print("\n" + "="*70)
     print("MONITORING DEBATES")
     print("="*70)
-    print("To watch debates in real-time, open separate terminal windows and run:")
-    print()
-    for i, log_file in enumerate(log_files):
-        print(f"  # Terminal {i+1}:")
-        print(f"  tail -f {log_file}")
-        print()
+    print("Debates are running in the background.")
+    print("Results are saved to debate_detail_*.txt files as they complete.")
+    print("Use --wait flag to wait for completion and see aggregate statistics.")
     print("="*70)
 
 
@@ -166,25 +115,19 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Run 2 debates and auto-open monitoring windows (macOS)
-  python run_parallel_debates.py --num-debates 2 --auto-monitor
-  # Creates: master_results_random_n2_20251016_120155.csv
-
-  # Run 2 debates, manually monitor with tail -f
+  # Run 2 debates in parallel
   python run_parallel_debates.py --num-debates 2
-  # Then in separate terminals:
-  # tail -f test_debate_results/debate_1_*.log
-  # tail -f test_debate_results/debate_2_*.log
+  # Creates: master_results_random_n2_20251016_120155/ with CSV and detail files
 
   # Run with specific seeds and wait for completion
   python run_parallel_debates.py --num-debates 3 --seeds 42 43 44 --wait
-  # Creates: master_results_seed42_43_44_n3_20251016_120155.csv
+  # Creates: master_results_seed42_43_44_n3_20251016_120155/
 
   # Run with custom max-turns
   python run_parallel_debates.py --num-debates 2 --seeds 100 200 --max-turns 10
-  # Creates: master_results_seed100_200_n2_turns10_20251016_120155.csv
+  # Creates: master_results_seed100_200_n2_turns10_20251016_120155/
 
-  # Run quietly (less verbose output)
+  # Run quietly (suppress verbose debate output)
   python run_parallel_debates.py --num-debates 2 --quiet
         """
     )
@@ -204,7 +147,7 @@ Examples:
     parser.add_argument('--wait', action='store_true',
                         help='Wait for all debates to complete before exiting')
     parser.add_argument('--auto-monitor', action='store_true',
-                        help='Automatically open terminal windows to monitor debates (macOS only)')
+                        help='[DEPRECATED] No longer used - log files removed for efficiency')
     
     args = parser.parse_args()
     
@@ -264,39 +207,31 @@ Examples:
     
     # Launch debate processes
     processes = []
-    log_files = []
+    run_ids = []
     
     for i in range(args.num_debates):
         seed = args.seeds[i] if args.seeds else None
-        process, log_file = run_single_debate_process(
+        process, run_id = run_single_debate_process(
             debate_id=i+1,
             output_dir=run_output_dir,
+            csv_filename=Path(master_csv).name,  # Just the filename, not full path
             seed=seed,
             max_turns=args.max_turns,
             quiet=args.quiet
         )
         processes.append((i+1, process))
-        log_files.append(log_file)
+        run_ids.append(run_id)
     
     # Print monitoring hints
-    tail_log_hint(log_files)
+    print_debate_progress_hint()
     
-    # Auto-open monitoring windows if requested
+    # Remove auto-monitor functionality since we no longer have log files
     if args.auto_monitor:
-        import platform
-        if platform.system() == 'Darwin':  # macOS
-            print("\nOpening monitoring windows...")
-            for i, log_file in enumerate(log_files):
-                cmd = f'tell application "Terminal" to do script "cd {os.getcwd()} && tail -f {log_file}"'
-                subprocess.run(['osascript', '-e', cmd])
-            print("✓ Monitoring windows opened!")
-        else:
-            print("\nWarning: --auto-monitor only supported on macOS")
-            print("Please manually run the tail commands above")
+        print("\nNote: --auto-monitor flag is deprecated (log files removed for efficiency).")
+        print("Results are saved to debate_detail_*.txt files as debates complete.")
     
     if not args.wait:
         print("\nDebates are running in the background.")
-        print("Use the tail commands above to monitor progress.")
         print("\nTo wait for completion and see aggregated results, re-run with --wait flag")
         return
     
@@ -325,23 +260,17 @@ Examples:
     print("All debates completed!")
     print("="*70)
     
-    # Aggregate results
-    print("\nAggregating results...")
-    aggregate_results(run_output_dir, master_csv)
-    
-    # Print statistics
+    # Print statistics (debates already wrote directly to master CSV)
     print_aggregate_stats(master_csv)
     
     # List generated files
     print("\nGenerated files:")
-    print(f"  Master CSV: {master_csv}")
-    for log_file in log_files:
-        print(f"  Log: {log_file}")
+    print(f"  Results CSV: {master_csv}")
     
     # List detail files
     detail_files = sorted(Path(run_output_dir).glob('debate_detail_*.txt'))
     if detail_files:
-        print(f"\n  Detail files ({len(detail_files)}):")
+        print(f"  Detail files ({len(detail_files)}):")
         for detail_file in detail_files[-args.num_debates:]:  # Show only recent ones
             print(f"    {detail_file}")
     

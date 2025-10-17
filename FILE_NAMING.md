@@ -3,24 +3,13 @@
 ## Overview
 
 All debate runs now use a **unique run identifier (run_id)** that appears in:
-1. Log filenames
-2. Detail filenames  
-3. CSV as a column
-4. Detail file headers
+1. Detail filenames  
+2. CSV as a column
+3. Detail file headers
 
 This makes it easy to match files across all outputs.
 
 ## Naming Format
-
-### Log Files
-```
-debate_{debate_id}_{seed}_{run_id}_{timestamp}.log
-```
-
-**Examples:**
-- `debate_1_seed100_a3f5b7c2_20251016_123045.log`
-- `debate_2_seed200_d8e9a1b4_20251016_123045.log`
-- `debate_1_f4c7d3e1_20251016_123045.log` (no seed specified)
 
 ### Detail Files
 ```
@@ -28,17 +17,20 @@ debate_detail_{run_id}_{timestamp}_{question_idx}.txt
 ```
 
 **Examples:**
-- `debate_detail_a3f5b7c2_20251016_123050_42.txt`
-- `debate_detail_d8e9a1b4_20251016_123051_163.txt`
+- `debate_detail_a3f5b7c2_20251016_123050_42.txt` (run_id: a3f5b7c2, question_idx: 42)
+- `debate_detail_d8e9a1b4_20251016_123051_163.txt` (run_id: d8e9a1b4, question_idx: 163)
 
-### Master CSV
+### Results CSV
 ```
-master_results_{seed_info}_{num_debates}_{turns}_{timestamp}.csv
+master_results_{seed_info}_n{num_debates}_{turns}_{timestamp}/
+  master_results_{seed_info}_n{num_debates}_{turns}_{timestamp}.csv
 ```
 
 **Examples:**
-- `master_results_seed100_200_n2_20251016_123045.csv`
-- `master_results_random_n3_turns10_20251016_123045.csv`
+- `master_results_seed100_200_n2_20251016_123045/master_results_seed100_200_n2_20251016_123045.csv`
+- `master_results_random_n3_turns10_20251016_123045/master_results_random_n3_turns10_20251016_123045.csv`
+
+Each run creates its own folder with a descriptive name containing the results CSV and all detail files.
 
 ## CSV Column: run_id
 
@@ -62,7 +54,7 @@ run_id="a3f5b7c2"
 ls test_debate_results/*${run_id}*
 
 # Result:
-# debate_1_seed100_a3f5b7c2_20251016_123045.log
+# debate_detail_a3f5b7c2_20251016_123045_42.txt
 # debate_detail_a3f5b7c2_20251016_123050_42.txt
 ```
 
@@ -88,12 +80,10 @@ df = pd.read_csv('test_debate_results/master_results_*.csv')
 # Get run_id for a specific row
 run_id = df.iloc[0]['run_id']
 
-# Find corresponding files
-log_files = glob.glob(f'test_debate_results/*{run_id}*.log')
-detail_files = glob.glob(f'test_debate_results/debate_detail_{run_id}_*.txt')
+# Find corresponding detail file
+detail_files = glob.glob(f'test_debate_results/*/debate_detail_{run_id}_*.txt')
 
 print(f"Run ID: {run_id}")
-print(f"Log: {log_files[0]}")
 print(f"Detail: {detail_files[0]}")
 ```
 
@@ -117,8 +107,8 @@ print(f"Detail: {detail_files[0]}")
 When running parallel debates, you'll see:
 
 ```
-[Debate 1] Starting... (run_id: a3f5b7c2, log: test_debate_results/debate_1_seed100_a3f5b7c2_20251016_123045.log)
-[Debate 2] Starting... (run_id: d8e9a1b4, log: test_debate_results/debate_2_seed200_d8e9a1b4_20251016_123045.log)
+[Debate 1] Starting... (run_id: a3f5b7c2)
+[Debate 2] Starting... (run_id: d8e9a1b4)
 ```
 
 And in the save output:

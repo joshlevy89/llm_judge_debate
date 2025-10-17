@@ -541,7 +541,7 @@ Reasoning: [brief explanation of your decision]"""
 
 
 def save_results(question_data, debater_qa, judge_qa, debate_interactive, verdict_interactive, 
-                 debate_non_interactive, verdict_non_interactive, output_dir, debater_qa_output, judge_qa_output, summary, run_id=None):
+                 debate_non_interactive, verdict_non_interactive, output_dir, debater_qa_output, judge_qa_output, summary, run_id=None, csv_filename=None):
     """Save results to CSV summary and detailed text file."""
     os.makedirs(output_dir, exist_ok=True)
 
@@ -591,7 +591,9 @@ def save_results(question_data, debater_qa, judge_qa, debate_interactive, verdic
     }
 
     # Save to CSV (append mode)
-    csv_file = Path(output_dir) / 'debate_results_summary.csv'
+    if csv_filename is None:
+        csv_filename = 'debate_results_summary.csv'
+    csv_file = Path(output_dir) / csv_filename
     file_exists = csv_file.exists()
 
     with open(csv_file, 'a', newline='', encoding='utf-8') as f:
@@ -699,6 +701,8 @@ def main():
                         help='Suppress verbose output')
     parser.add_argument('--run-id', type=str, default=None,
                         help='Unique run identifier (auto-generated if not provided)')
+    parser.add_argument('--csv-filename', type=str, default=None,
+                        help='CSV filename to append results to (default: debate_results_summary.csv)')
 
     args = parser.parse_args()
     
@@ -831,7 +835,7 @@ def main():
                                        debate_interactive, verdict_interactive, 
                                        debate_non_interactive, verdict_non_interactive,
                                        args.output_dir, debater_qa_output, judge_qa_output, summary, 
-                                       run_id=args.run_id)
+                                       run_id=args.run_id, csv_filename=args.csv_filename)
     print(f"   Run ID: {args.run_id}")
     print(f"   CSV: {csv_file}")
     print(f"   Details: {text_file}")

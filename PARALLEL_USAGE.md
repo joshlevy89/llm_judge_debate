@@ -12,30 +12,20 @@ python run_parallel_debates.py --num-debates 2 --wait
 python run_parallel_debates.py --num-debates 2
 ```
 
-### Monitor live output in separate terminals:
+### Note about monitoring:
 ```bash
-# After starting debates, use the tail commands printed by the script:
-tail -f test_debate_results/debate_1_*.log
-tail -f test_debate_results/debate_2_*.log
-```
-
-### Auto-open monitoring windows (macOS):
-```bash
-# First, start the debates
-python run_parallel_debates.py --num-debates 2
-
-# Then open monitoring windows
-./monitor_debates.sh test_debate_results/debate_1_*.log test_debate_results/debate_2_*.log
+# Debates run in the background
+# Results are saved to debate_detail_*.txt files as they complete
+# Use --wait flag to see aggregate statistics when all debates finish
 ```
 
 ## Features
 
 ✅ **Run multiple debates simultaneously** - Leverage parallel processing  
-✅ **Separate log files** - Each debate has its own complete log  
 ✅ **Master CSV aggregation** - All results combined in one file  
 ✅ **Individual detail files** - Each debate saves its own detailed output  
-✅ **Real-time monitoring** - Tail log files to watch progress  
 ✅ **Reproducible** - Use `--seeds` for consistent results  
+✅ **Efficient** - No redundant log files, all info in detail files  
 
 ## Command Options
 
@@ -71,38 +61,36 @@ python run_parallel_debates.py --num-debates 2 --output-dir ./my_experiments --w
 
 ## Output Files
 
-After running, you'll find:
+After running, you'll find in the run-specific folder:
 
-1. **Master CSV**: `test_debate_results/master_results_summary.csv`
-   - Aggregated results from all debates
-   - Cumulative across all runs
+1. **Results CSV**: `test_debate_results/master_results_RUNINFO/master_results_RUNINFO.csv`
+   - All results from all debates in this run
+   - Example: `master_results_random_n100_20251016_132254.csv`
+   - Contains debater/judge direct QA accuracy, debate outcomes, confidence scores
 
-2. **Individual CSVs**: `test_debate_results/debate_results_summary.csv`
-   - Results from current run only
-   - Gets backed up before each new run
-
-3. **Log files**: `test_debate_results/debate_N_TIMESTAMP.log`
-   - Full console output for each debate
-   - Useful for debugging and real-time monitoring
-
-4. **Detail files**: `test_debate_results/debate_detail_TIMESTAMP_QIDX.txt`
+2. **Detail files**: `test_debate_results/master_results_RUNINFO/debate_detail_RUNID_TIMESTAMP_QIDX.txt`
    - Complete debate transcript and analysis
    - One per debate
+   - Contains all the information (questions, arguments, verdicts, reasoning)
 
 ## Workflow Example
 
 ```bash
-# Terminal 1: Start 2 debates
+# Start debates and wait for completion
+python run_parallel_debates.py --num-debates 2 --wait
+
+# Or run in background (non-blocking)
 python run_parallel_debates.py --num-debates 2
 
-# Terminal 2: Monitor debate 1
-tail -f test_debate_results/debate_1_*.log
+# Check results in the generated folder
+ls test_debate_results/master_results_random_n2_*/
+# You'll see: CSV files and debate_detail_*.txt files
 
-# Terminal 3: Monitor debate 2
-tail -f test_debate_results/debate_2_*.log
+# Check results
+cat test_debate_results/master_results_random_n2_*/*.csv
 
-# Later: Check aggregated results
-cat test_debate_results/master_results_summary.csv
+# Read full debate transcripts
+cat test_debate_results/master_results_random_n2_*/debate_detail_*.txt
 ```
 
 ## Original Single Debate Script
