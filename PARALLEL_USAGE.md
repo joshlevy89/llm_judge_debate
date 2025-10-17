@@ -34,9 +34,12 @@ python run_parallel_debates.py [OPTIONS]
 
 Options:
   --num-debates N       Number of parallel debates (default: 2)
+  --max-concurrent N    Max concurrent debates (default: all at once)
+                        Use this to avoid API rate limits
   --output-dir DIR      Output directory (default: ./test_debate_results)
   --master-csv FILE     Master CSV path (default: OUTPUT_DIR/master_results_summary.csv)
-  --seeds S1 S2 ...     Random seeds for each debate (must match --num-debates)
+  --seed N              Random seed for reproducibility (generates deterministic
+                        seeds for each debate)
   --max-turns N         Max debate turns per debate (default: 20)
   --quiet               Suppress verbose output in logs
   --wait                Wait for completion before exiting
@@ -44,10 +47,17 @@ Options:
 
 ## Examples
 
-### Run 3 debates with specific seeds:
+### Run 100 debates with rate limiting (recommended):
 ```bash
-python run_parallel_debates.py --num-debates 3 --seeds 42 43 44 --wait
+python run_parallel_debates.py --num-debates 100 --max-concurrent 20 --wait
 ```
+This runs 100 debates in batches of 20, preventing API rate limit errors.
+
+### Run 100 debates reproducibly with a seed:
+```bash
+python run_parallel_debates.py --num-debates 100 --seed 42 --max-concurrent 20 --wait
+```
+The seed 42 generates deterministic seeds for all 100 debates, making results reproducible.
 
 ### Run quietly (less verbose logs):
 ```bash

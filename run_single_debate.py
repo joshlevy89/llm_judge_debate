@@ -627,19 +627,25 @@ def save_config(output_dir, max_turns_used=None):
     return config_file
 
 
-def initialize_debate_detail_file(text_file, question_data, run_id):
+def initialize_debate_detail_file(text_file, question_data, run_id, seed=None, master_seed=None):
     """Initialize the debate detail file with header and question info.
     
     Args:
         text_file: Path to the debate detail text file
         question_data: Dictionary containing question information
         run_id: Unique run identifier
+        seed: Random seed used for this debate (optional)
+        master_seed: Master seed used by parallel runner (optional)
     """
     with open(text_file, 'w', encoding='utf-8') as f:
         f.write("="*80 + "\n")
         f.write("DEBATE ANALYSIS RESULTS\n")
         f.write(f"Run ID: {run_id}\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        if seed is not None:
+            f.write(f"Seed: {seed}\n")
+        if master_seed is not None:
+            f.write(f"Master Seed: {master_seed}\n")
         f.write("="*80 + "\n\n")
 
         # Question
@@ -879,6 +885,8 @@ def main():
                         help='Output directory for results')
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility')
+    parser.add_argument('--master-seed', type=int, default=None,
+                        help='Master seed used by parallel runner (for logging only)')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help='Maximum number of debate turns')
     parser.add_argument('--quiet', action='store_true',
@@ -912,7 +920,8 @@ def main():
     text_file = Path(args.output_dir) / f'debate_detail_{args.run_id}_{timestamp}_{question_idx}.txt'
     
     try:
-        initialize_debate_detail_file(text_file, question_data, args.run_id)
+        initialize_debate_detail_file(text_file, question_data, args.run_id, 
+                                     seed=args.seed, master_seed=args.master_seed)
 
         print(f"\nQuestion {question_data['question_idx']}:")
         print(question_data['question'])

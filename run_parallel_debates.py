@@ -13,6 +13,7 @@ import subprocess
 import argparse
 import time
 import csv
+import random
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
@@ -22,7 +23,8 @@ from config import MAX_TURNS_DEFAULT
 
 
 def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str, seed: int = None, 
-                               max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = False) -> subprocess.Popen:
+                               max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = False, 
+                               master_seed: int = None) -> subprocess.Popen:
     """
     Launch a single debate as a subprocess.
     
@@ -53,6 +55,9 @@ def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str
     
     if seed is not None:
         cmd.extend(['--seed', str(seed)])
+    
+    if master_seed is not None:
+        cmd.extend(['--master-seed', str(master_seed)])
     
     if quiet:
         cmd.append('--quiet')
@@ -121,13 +126,18 @@ Examples:
   python run_parallel_debates.py --num-debates 2
   # Creates: master_results_random_n2_20251016_120155/ with CSV and detail files
 
-  # Run with specific seeds and wait for completion
-  python run_parallel_debates.py --num-debates 3 --seeds 42 43 44 --wait
-  # Creates: master_results_seed42_43_44_n3_20251016_120155/
+  # Run 100 debates with max 20 concurrent (to avoid rate limits)
+  python run_parallel_debates.py --num-debates 100 --max-concurrent 20 --wait
+  # Runs in batches of 20 until all 100 are complete
+
+  # Run with specific seed for reproducibility
+  python run_parallel_debates.py --num-debates 100 --seed 42 --max-concurrent 20 --wait
+  # Creates: master_results_seed42_n100_20251016_120155/
+  # The seed 42 generates deterministic seeds for all 100 debates
 
   # Run with custom max-turns
-  python run_parallel_debates.py --num-debates 2 --seeds 100 200 --max-turns 10
-  # Creates: master_results_seed100_200_n2_turns10_20251016_120155/
+  python run_parallel_debates.py --num-debates 10 --seed 100 --max-turns 10
+  # Creates: master_results_seed100_n10_turns10_20251016_120155/
 
   # Run quietly (suppress verbose debate output)
   python run_parallel_debates.py --num-debates 2 --quiet
@@ -136,12 +146,14 @@ Examples:
     
     parser.add_argument('--num-debates', type=int, default=2,
                         help='Number of debates to run in parallel (default: 2)')
+    parser.add_argument('--max-concurrent', type=int, default=None,
+                        help='Maximum number of debates to run concurrently (default: all at once). Use this to avoid rate limits.')
     parser.add_argument('--output-dir', type=str, default='./test_debate_results',
                         help='Output directory for results (default: ./test_debate_results)')
     parser.add_argument('--master-csv', type=str, default=None,
                         help='Path to master CSV for aggregated results (default: auto-generated descriptive name)')
-    parser.add_argument('--seeds', type=int, nargs='+', default=None,
-                        help='Random seeds for each debate (must match --num-debates)')
+    parser.add_argument('--seed', type=int, default=None,
+                        help='Random seed for reproducibility (generates deterministic seeds for each debate)')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help=f'Maximum number of debate turns (default: {MAX_TURNS_DEFAULT})')
     parser.add_argument('--quiet', action='store_true',
@@ -153,9 +165,11 @@ Examples:
     
     args = parser.parse_args()
     
-    # Validate arguments
-    if args.seeds and len(args.seeds) != args.num_debates:
-        parser.error(f"Number of seeds ({len(args.seeds)}) must match --num-debates ({args.num_debates})")
+    # Generate deterministic seeds for each debate if master seed provided
+    debate_seeds = None
+    if args.seed is not None:
+        random.seed(args.seed)
+        debate_seeds = [random.randint(1, 1000000) for _ in range(args.num_debates)]
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
@@ -173,9 +187,8 @@ Examples:
         filename_parts = ['master_results']
         
         # Add seed info
-        if args.seeds:
-            seed_str = '_'.join(map(str, args.seeds))
-            filename_parts.append(f'seed{seed_str}')
+        if args.seed is not None:
+            filename_parts.append(f'seed{args.seed}')
         else:
             filename_parts.append('random')
         
@@ -196,10 +209,15 @@ Examples:
     # Create run-specific output directory
     os.makedirs(run_output_dir, exist_ok=True)
     
+    # Determine concurrency limit
+    max_concurrent = args.max_concurrent if args.max_concurrent else args.num_debates
+    
     print("="*70)
     print("PARALLEL DEBATE RUNNER")
     print("="*70)
     print(f"Number of debates: {args.num_debates}")
+    if args.max_concurrent and args.max_concurrent < args.num_debates:
+        print(f"Max concurrent: {max_concurrent} (batched to avoid rate limits)")
     print(f"Run folder: {run_output_dir}")
     print(f"Master CSV: {master_csv}")
     print(f"Max turns per debate: {args.max_turns}")
@@ -207,20 +225,54 @@ Examples:
     
     # Note: No need to backup individual CSV since each run has its own folder
     
-    # Launch debate processes
-    processes = []
+    # Launch debate processes in batches
+    all_processes = []
+    debates_to_run = list(range(args.num_debates))
     
-    for i in range(args.num_debates):
-        seed = args.seeds[i] if args.seeds else None
-        process, run_id = run_single_debate_process(
-            debate_id=i+1,
-            output_dir=run_output_dir,
-            csv_filename=Path(master_csv).name,  # Just the filename, not full path
-            seed=seed,
-            max_turns=args.max_turns,
-            quiet=args.quiet
-        )
-        processes.append((run_id, process))
+    # Process debates in batches
+    while debates_to_run:
+        # Launch next batch
+        batch = debates_to_run[:max_concurrent]
+        debates_to_run = debates_to_run[max_concurrent:]
+        
+        batch_processes = []
+        for i in batch:
+            seed = debate_seeds[i] if debate_seeds else None
+            process, run_id = run_single_debate_process(
+                debate_id=i+1,
+                output_dir=run_output_dir,
+                csv_filename=Path(master_csv).name,  # Just the filename, not full path
+                seed=seed,
+                max_turns=args.max_turns,
+                quiet=args.quiet,
+                master_seed=args.seed
+            )
+            batch_processes.append((run_id, process))
+        
+        all_processes.extend(batch_processes)
+        
+        # If we have more batches to run, wait for this batch to complete
+        if debates_to_run:
+            print(f"\nWaiting for batch of {len(batch_processes)} debates to complete before starting next batch...")
+            batch_completed = [False] * len(batch_processes)
+            
+            while not all(batch_completed):
+                for idx, (run_id, process) in enumerate(batch_processes):
+                    if not batch_completed[idx]:
+                        retcode = process.poll()
+                        if retcode is not None:
+                            batch_completed[idx] = True
+                            if retcode == 0:
+                                print(f"[run_id: {run_id}] ✓ Completed")
+                            else:
+                                print(f"[run_id: {run_id}] ✗ Failed (exit code {retcode})")
+                
+                if not all(batch_completed):
+                    time.sleep(1)
+            
+            print(f"Batch complete. {len(debates_to_run)} debates remaining.")
+    
+    processes = all_processes
     
     # Print monitoring hints
     print_debate_progress_hint()
