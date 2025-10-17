@@ -25,6 +25,7 @@ from pathlib import Path
 from google import genai
 from google.genai import types
 from openai import OpenAI
+from anthropic import Anthropic
 from datasets import load_dataset
 from dotenv import load_dotenv
 
@@ -39,8 +40,80 @@ from config import (
 load_dotenv()
 
 # Initialize API clients
-genai_client = genai.Client(api_key=os.environ['GEMINI_API_KEY'])
-openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
+genai_client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
+openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
+anthropic_client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+
+
+def get_provider(model_name):
+    """Determine provider from model name."""
+    model_lower = model_name.lower()
+    if any(x in model_lower for x in ['gpt', 'o1', 'o3']):
+        return 'openai'
+    elif any(x in model_lower for x in ['claude', 'anthropic']):
+        return 'anthropic'
+    elif any(x in model_lower for x in ['gemini', 'flash', 'pro']):
+        return 'google'
+    else:
+        raise ValueError(f"Unknown model provider for model: {model_name}")
+
+
+def llm_generate(model_name, prompt, temperature=None, system_prompt=None):
+    """
+    Unified LLM generation wrapper for all providers.
+    
+    Args:
+        model_name: Name of the model to use
+        prompt: User prompt text
+        temperature: Optional temperature (uses default if None)
+        system_prompt: Optional system prompt (for OpenAI/Anthropic)
+    
+    Returns:
+        Generated text response
+    """
+    provider = get_provider(model_name)
+    
+    if provider == 'openai':
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
+        kwargs = {"model": model_name, "messages": messages}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+            
+        response = openai_client.chat.completions.create(**kwargs)
+        return response.choices[0].message.content.strip()
+    
+    elif provider == 'anthropic':
+        kwargs = {"model": model_name, "max_tokens": 4096, "messages": [{"role": "user", "content": prompt}]}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        if system_prompt:
+            kwargs["system"] = system_prompt
+            
+        response = anthropic_client.messages.create(**kwargs)
+        return response.content[0].text.strip()
+    
+    elif provider == 'google':
+        config_kwargs = {}
+        if temperature is not None:
+            config_kwargs["temperature"] = temperature
+        
+        full_prompt = prompt
+        if system_prompt:
+            full_prompt = f"{system_prompt}\n\n{prompt}"
+            
+        response = genai_client.models.generate_content(
+            model=model_name,
+            contents=full_prompt,
+            config=types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
+        )
+        return response.text.strip()
+    
+    else:
+        raise ValueError(f"Unknown provider: {provider}")
 
 
 def load_gpqa_question(random_seed=None):
@@ -122,20 +195,8 @@ Confidence: [percentage between 50-100]%
 Reasoning: [brief explanation]"""
 
     try:
-        if model_type == 'debater':
-            response = genai_client.models.generate_content(
-                model=DEBATE_MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(temperature=DIRECT_QA_TEMPERATURE)
-            )
-            answer_text = response.text.strip()
-        else:  # judge
-            response = openai_client.chat.completions.create(
-                model=JUDGE_MODEL,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=DIRECT_QA_TEMPERATURE
-            )
-            answer_text = response.choices[0].message.content.strip()
+        model = DEBATE_MODEL if model_type == 'debater' else JUDGE_MODEL
+        answer_text = llm_generate(model, prompt, temperature=DIRECT_QA_TEMPERATURE)
 
         # Parse the response
         selected_letter = None
@@ -258,11 +319,7 @@ def debate_round(question, debater_a_answer, debater_b_answer, history, current_
 
     for attempt in range(max_retries):
         try:
-            response = genai_client.models.generate_content(
-                model=DEBATE_MODEL,
-                contents=prompt
-            )
-            return response.text.strip()
+            return llm_generate(DEBATE_MODEL, prompt)
 
         except Exception as e:
             error_msg = str(e)
@@ -360,15 +417,7 @@ Debate transcript so far:
 What is your next action?"""
 
         try:
-            response = openai_client.chat.completions.create(
-                model=JUDGE_MODEL,
-                messages=[
-                    {"role": "system", "content": self.judge_prompt},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=JUDGE_DECISION_TEMPERATURE
-            )
-            return response.choices[0].message.content.strip()
+            return llm_generate(JUDGE_MODEL, prompt, temperature=JUDGE_DECISION_TEMPERATURE, system_prompt=self.judge_prompt)
         except Exception as e:
             print(f"Error getting judge decision: {e}")
             return "end"
@@ -502,13 +551,7 @@ Confidence: [percentage between 50-100]%
 Reasoning: [brief explanation of your decision]"""
 
     try:
-        response = openai_client.chat.completions.create(
-            model=JUDGE_MODEL,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=FINAL_VERDICT_TEMPERATURE
-        )
-
-        verdict_text = response.choices[0].message.content.strip()
+        verdict_text = llm_generate(JUDGE_MODEL, prompt, temperature=FINAL_VERDICT_TEMPERATURE)
 
         # Parse verdict
         winner = None
