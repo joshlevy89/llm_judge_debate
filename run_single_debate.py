@@ -38,7 +38,7 @@ from config import (
     USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE, BASELINE_CACHE_DIR,
     DEBATE_MODE,
     DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT,
-    SINGLE_DEBATE_SEED, PARALLEL_DEBATE_MASTER_SEED
+    MASTER_SEED
 )
 import baseline_cache
 
@@ -146,13 +146,20 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
                 raise
 
 
-def load_gpqa_question(random_seed=None):
-    """Load a random GPQA diamond question."""
-    if random_seed is not None:
-        random.seed(random_seed)
-
+def load_gpqa_question(question_idx=None):
+    """Load a GPQA diamond question.
+    
+    Args:
+        question_idx: If provided, loads that specific question index.
+                     If None, selects randomly.
+    """
     dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
-    random_idx = random.randint(0, len(dataset) - 1)
+    
+    if question_idx is not None:
+        random_idx = question_idx % len(dataset)
+    else:
+        random_idx = random.randint(0, len(dataset) - 1)
+    
     question_data = dataset[random_idx]
 
     # Extract question and answers
@@ -615,14 +622,13 @@ Reasoning: [brief explanation of your decision]"""
         }
 
 
-def save_config(output_dir, max_turns_used=None, seed=None, master_seed=None, quiet=False, output_dir_override=False):
+def save_config(output_dir, max_turns_used=None, master_seed=None, quiet=False, output_dir_override=False):
     """Save the current configuration to the output directory as JSON.
     
     Args:
         output_dir: Directory to save config file
         max_turns_used: Actual max_turns value used in this run (if different from default)
-        seed: Random seed for single debate runs (None for parallel runs, where seeds are auto-generated)
-        master_seed: Master seed from parallel runner (None for single runs)
+        master_seed: Master seed from parallel runner (None for random sampling)
         quiet: Whether quiet mode was enabled
         output_dir_override: Whether output_dir was overridden via CLI
     """
@@ -663,7 +669,6 @@ def save_config(output_dir, max_turns_used=None, seed=None, master_seed=None, qu
             "baseline_cache_dir": BASELINE_CACHE_DIR
         },
         "runtime_arguments": {
-            "seed": seed,
             "master_seed": master_seed,
             "quiet": quiet,
             "output_dir": output_dir if output_dir_override else None,
@@ -678,14 +683,14 @@ def save_config(output_dir, max_turns_used=None, seed=None, master_seed=None, qu
     return config_file
 
 
-def initialize_debate_detail_file(text_file, question_data, run_id, seed=None, master_seed=None):
+def initialize_debate_detail_file(text_file, question_data, run_id, question_idx=None, master_seed=None):
     """Initialize the debate detail file with header and question info.
     
     Args:
         text_file: Path to the debate detail text file
         question_data: Dictionary containing question information
         run_id: Unique run identifier
-        seed: Random seed used for this debate (optional)
+        question_idx: Question index used for this debate (optional)
         master_seed: Master seed used by parallel runner (optional)
     """
     with open(text_file, 'w', encoding='utf-8') as f:
@@ -693,8 +698,8 @@ def initialize_debate_detail_file(text_file, question_data, run_id, seed=None, m
         f.write("DEBATE ANALYSIS RESULTS\n")
         f.write(f"Run ID: {run_id}\n")
         f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        if seed is not None:
-            f.write(f"Seed: {seed}\n")
+        if question_idx is not None:
+            f.write(f"Question Index: {question_idx}\n")
         if master_seed is not None:
             f.write(f"Master Seed: {master_seed}\n")
         f.write("="*80 + "\n\n")
@@ -961,14 +966,14 @@ def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactiv
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Run a single debate experiment. NOTE: For typical use, run run_parallel_debates.py instead (even with --num-debates 1).'
+        description='Run a single debate experiment. NOTE: Use run_parallel_debates.py instead (even with --num-debates 1).'
     )
     parser.add_argument('--output-dir', type=str, default='./single_debate_runs',
                         help='Output directory for results')
-    parser.add_argument('--seed', type=int, default=SINGLE_DEBATE_SEED,
-                        help=f'Random seed for question selection (default: {SINGLE_DEBATE_SEED or "random"})')
-    parser.add_argument('--master-seed', type=int, default=PARALLEL_DEBATE_MASTER_SEED,
-                        help=f'Master seed from parallel runner, for logging only (default: {PARALLEL_DEBATE_MASTER_SEED or "None"})')
+    parser.add_argument('--question-idx', type=int, default=None,
+                        help='Question index to use (passed from parallel runner, None = random)')
+    parser.add_argument('--master-seed', type=int, default=None,
+                        help='Master seed from parallel runner, for logging only')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help='Maximum number of debate turns')
     parser.add_argument('--quiet', action='store_true',
@@ -992,20 +997,17 @@ def main():
     config_file = Path(args.output_dir) / 'config_used.json'
     if not config_file.exists():
         output_dir_override = '--output-dir' in sys.argv
-        # For parallel runs, only log master_seed (individual seeds are auto-generated)
-        # For single runs, log the seed used
-        config_seed = None if args.master_seed is not None else args.seed
+        # Only save master_seed to config (question indices are sampled from it)
         save_config(
             args.output_dir, 
             max_turns_used=args.max_turns,
-            seed=config_seed,
             master_seed=args.master_seed,
             quiet=args.quiet,
             output_dir_override=output_dir_override
         )
 
     print("Loading GPQA question...")
-    question_data = load_gpqa_question(random_seed=args.seed)
+    question_data = load_gpqa_question(question_idx=args.question_idx)
     
     # Initialize debate detail file with header and question
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -1014,7 +1016,7 @@ def main():
     
     try:
         initialize_debate_detail_file(text_file, question_data, args.run_id, 
-                                     seed=args.seed, master_seed=args.master_seed)
+                                     question_idx=args.question_idx, master_seed=args.master_seed)
 
         print(f"\nQuestion {question_data['question_idx']}:")
         print(question_data['question'])

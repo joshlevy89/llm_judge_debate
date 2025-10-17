@@ -9,8 +9,11 @@ used across the debate system.
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gpt-3.5-turbo'
 
-DEBATE_MODEL = 'gpt-4o-mini'
-JUDGE_MODEL = 'gpt-4o-mini'
+# DEBATE_MODEL = 'gpt-4o-mini'
+# JUDGE_MODEL = 'gpt-4o-mini'
+
+DEBATE_MODEL = 'gemini-2.5-flash'
+JUDGE_MODEL = 'gemini-2.5-flash'
 
 # Temperature settings
 DIRECT_QA_TEMPERATURE = 0.0  # Temperature for initial direct QA tests
@@ -42,10 +45,9 @@ DATASET_SUBSET = "gpqa_diamond"
 DATASET_SPLIT = "train"
 
 # Random seed configuration
-# For typical use, run parallel_debates.py (even with --num-debates 1) which uses PARALLEL_DEBATE_MASTER_SEED
-# SINGLE_DEBATE_SEED is only used when calling run_single_debate.py directly (e.g., for testing)
-SINGLE_DEBATE_SEED = 1  # Seed for direct run_single_debate.py calls (None = random, rarely used)
-PARALLEL_DEBATE_MASTER_SEED = 42  # Master seed for parallel runs - generates individual seeds for each debate (None = random)
+# Run debates using run_parallel_debates.py (even for single debates with --num-debates 1)
+# Master seed controls which questions are sampled (without replacement) for all debates
+MASTER_SEED = 42  # Master seed for reproducibility (None = random question sampling)
 
 # Cache key includes: model name, question_idx, temperature, dataset info
 # This ensures cache is invalidated when models, datasets, or questions change

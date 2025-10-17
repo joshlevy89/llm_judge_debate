@@ -19,10 +19,11 @@ from pathlib import Path
 from typing import List, Dict
 import glob
 
-from config import MAX_TURNS_DEFAULT, PARALLEL_DEBATE_MASTER_SEED
+from datasets import load_dataset
+from config import MAX_TURNS_DEFAULT, MASTER_SEED, DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
 
 
-def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: str, seed: int = None, 
+def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: str, question_idx: int = None, 
                                max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = False, 
                                master_seed: int = None) -> subprocess.Popen:
     """
@@ -31,9 +32,10 @@ def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: s
     Args:
         debate_id: Unique identifier for this debate instance
         output_dir: Directory for output files
-        seed: Random seed for reproducibility
+        question_idx: Question index to use (None = random)
         max_turns: Maximum debate turns
         quiet: Suppress verbose output in the subprocess
+        master_seed: Master seed for logging
         
     Returns:
         subprocess.Popen object
@@ -53,8 +55,8 @@ def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: s
         '--run-id', run_id,  # Pass unique identifier
     ]
     
-    if seed is not None:
-        cmd.extend(['--seed', str(seed)])
+    if question_idx is not None:
+        cmd.extend(['--question-idx', str(question_idx)])
     
     if master_seed is not None:
         cmd.extend(['--master-seed', str(master_seed)])
@@ -168,8 +170,8 @@ Examples:
                         help='Output directory for results (default: ./parallel_debate_runs)')
     parser.add_argument('--master-jsonl', type=str, default=None,
                         help='Path to master JSONL for aggregated results (default: auto-generated descriptive name)')
-    parser.add_argument('--seed', type=int, default=PARALLEL_DEBATE_MASTER_SEED,
-                        help=f'Master seed for reproducibility - generates deterministic individual seeds for each debate (default: {PARALLEL_DEBATE_MASTER_SEED or "random"})')
+    parser.add_argument('--seed', type=int, default=MASTER_SEED,
+                        help=f'Master seed - samples questions without replacement (default: {MASTER_SEED or "random"})')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help=f'Maximum number of debate turns (default: {MAX_TURNS_DEFAULT})')
     parser.add_argument('--quiet', action='store_true',
@@ -181,11 +183,18 @@ Examples:
     
     args = parser.parse_args()
     
-    # Generate deterministic seeds for each debate if master seed provided
-    debate_seeds = None
+    # Sample question indices without replacement using master seed
+    question_indices = None
     if args.seed is not None:
         random.seed(args.seed)
-        debate_seeds = [random.randint(1, 1000000) for _ in range(args.num_debates)]
+        dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
+        dataset_size = len(dataset)
+        
+        # Sample without replacement
+        question_indices = random.sample(range(dataset_size), min(args.num_debates, dataset_size))
+        
+        if args.num_debates > dataset_size:
+            print(f"WARNING: Only {dataset_size} questions available, running {dataset_size} debates instead of {args.num_debates}.")
     
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
@@ -253,12 +262,12 @@ Examples:
         
         batch_processes = []
         for i in batch:
-            seed = debate_seeds[i] if debate_seeds else None
+            question_idx = question_indices[i] if question_indices else None
             process, run_id = run_single_debate_process(
                 debate_id=i+1,
                 output_dir=run_output_dir,
                 jsonl_filename=Path(master_jsonl).name,  # Just the filename, not full path
-                seed=seed,
+                question_idx=question_idx,
                 max_turns=args.max_turns,
                 quiet=args.quiet,
                 master_seed=args.seed
