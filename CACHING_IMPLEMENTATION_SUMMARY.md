@@ -42,7 +42,7 @@ A smart caching system that stores direct QA baseline results to avoid re-runnin
 - **Location**: `./baseline_cache/`
 - **Format**: JSON files, one per model/type
 - **Naming**: `baseline_{type}_{model}_temp{temp}.json`
-- **Keys**: Model name, question index, temperature
+- **Keys**: Model name, question index, temperature, **option values (A & B)**
 
 ### First Run (Cache Miss)
 1. Check cache for question - not found
@@ -60,6 +60,7 @@ A smart caching system that stores direct QA baseline results to avoid re-runnin
 Automatic when:
 - Model changes (separate cache per model)
 - Temperature changes (included in cache key)
+- **Choice order changes** (option A/B values don't match)
 - Manual deletion of cache files
 
 ## Benefits
@@ -155,6 +156,7 @@ rm -rf baseline_cache/
 - Cache files are human-readable JSON
 - Safe to delete cache anytime - will rebuild automatically
 - Consider committing cache to git for reproducibility
+- **Choice order matters**: Cache validates that option A and B match exactly. This allows you to experiment with different choice orderings - each ordering is treated as a separate experiment and will trigger fresh QA runs when the order changes.
 
 ## Migration
 

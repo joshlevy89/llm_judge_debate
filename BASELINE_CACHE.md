@@ -16,26 +16,33 @@ The baseline cache system stores direct QA results (before debates) to avoid re-
 
 ### Cache Keys
 
-Results are keyed by:
+Results are keyed and validated by:
 1. **Model name** - Different models have separate cache files
 2. **Model type** - 'debater' or 'judge'
 3. **Question index** - Each question has its own cache entry (based on dataset index)
 4. **Temperature** - Ensures consistency with current settings
 5. **Dataset info** - Dataset name, subset, and split (validates cache is for correct dataset)
+6. **Option values** - The exact text of option A and option B (validates choice order hasn't changed)
 
 ### Cache Behavior
 
-**On first run** of a question:
-1. Check cache for existing result
+**On first run** of a question with specific option order:
+1. Check cache for existing result with matching option order
 2. If not found, run direct QA via API
-3. Save result to cache
-4. Mark as `cached: false` in CSV
+3. Save result to cache (including option A and B values)
+4. Mark as `cached: false` in JSONL
 
-**On subsequent runs** of the same question:
+**On subsequent runs** of the same question with same option order:
 1. Check cache for existing result
-2. If found and temperature matches, use cached result
+2. If found and all parameters match (temperature, options), use cached result
 3. Skip API call
-4. Mark as `cached: true` in CSV
+4. Mark as `cached: true` in JSONL
+
+**If option order changes:**
+1. Cache validation fails (options don't match cached values)
+2. Warning message: "Cached result has different options"
+3. Run fresh QA with new option order
+4. Save as new cache entry (overwrites previous for this question_idx)
 
 ### Configuration
 
@@ -129,6 +136,8 @@ The cache files are human-readable JSON. Example structure:
       "confidence": 85,
       "reasoning": "...",
       "temperature": 0.0,
+      "option_a": "Water",
+      "option_b": "Hydrogen peroxide",
       "timestamp": "2025-10-17T10:05:00"
     }
   }
@@ -175,9 +184,14 @@ SAVE_TO_BASELINE_CACHE = False  # Don't save to cache
 The cache assumes:
 - Questions at the same index are the same across runs (within the same dataset)
 - Direct QA with temperature 0.0 is deterministic enough to cache
-- Model behavior is consistent for the same question
+- Model behavior is consistent for the same question and option order
 
 **Question Index:** The cache keys are based on the actual index in the GPQA diamond dataset (`dataset[42]` always refers to the same question).
+
+**Choice Order Sensitivity:** The cache validates that option A and option B are the same as when the cached result was generated. This means:
+- If you run the same question with different randomization seeds, you'll get cache hits only when the choice order matches
+- This allows you to experiment with choice order effects - each unique ordering is treated as a separate cache entry
+- The cache entry for a question_idx is overwritten when a new option ordering is used (only the most recent option configuration is cached per question)
 
 ### Cache Invalidation
 
@@ -185,6 +199,7 @@ Cache is automatically invalidated (ignored) when:
 - **Model name changes** - Different models have separate cache files
 - **Temperature changes** - Cached results won't match current temperature
 - **Dataset changes** - If you change `DATASET_NAME`, `DATASET_SUBSET`, or `DATASET_SPLIT` in `config.py`, cache will be ignored
+- **Choice order changes** - If option A and option B values don't match the cached values, cache is ignored
 
 When cache is invalidated, you'll see a warning message and fresh results will be generated.
 

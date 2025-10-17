@@ -105,16 +105,18 @@ def _save_cache(cache_file: Path, cache_data: Dict) -> None:
         print(f"Warning: Could not save cache file {cache_file}: {e}")
 
 
-def get_cached_qa(question_idx: int, model_type: str) -> Optional[Dict]:
+def get_cached_qa(question_idx: int, model_type: str, option_a: str = None, option_b: str = None) -> Optional[Dict]:
     """
     Get cached direct QA result for a question and model.
     
     Args:
         question_idx: Index of the question
         model_type: Type of model ('debater' or 'judge')
+        option_a: The text of option A (required for validation)
+        option_b: The text of option B (required for validation)
     
     Returns:
-        Cached QA result dictionary, or None if not found
+        Cached QA result dictionary, or None if not found or options don't match
     """
     # Determine which model to use
     model_name = DEBATE_MODEL if model_type == 'debater' else JUDGE_MODEL
@@ -140,17 +142,29 @@ def get_cached_qa(question_idx: int, model_type: str) -> Optional[Dict]:
     question_key = str(question_idx)
     if question_key in cache_data["results"]:
         result = cache_data["results"][question_key]
+        
         # Validate that temperature matches
-        if result.get("temperature") == DIRECT_QA_TEMPERATURE:
-            return result
-        else:
+        if result.get("temperature") != DIRECT_QA_TEMPERATURE:
             print(f"Warning: Cached result for question {question_idx} has mismatched temperature. Ignoring cache.")
             return None
+        
+        # Validate that the option values match (if provided)
+        # This ensures we don't use cached results when the choice order has changed
+        if option_a is not None and option_b is not None:
+            cached_option_a = result.get("option_a")
+            cached_option_b = result.get("option_b")
+            
+            if cached_option_a != option_a or cached_option_b != option_b:
+                print(f"Warning: Cached result for question {question_idx} has different options. "
+                      f"Ignoring cache (choice order may have changed).")
+                return None
+        
+        return result
     
     return None
 
 
-def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict) -> None:
+def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict, option_a: str = None, option_b: str = None) -> None:
     """
     Save direct QA result to cache.
     
@@ -158,6 +172,8 @@ def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict) -> Non
         question_idx: Index of the question
         model_type: Type of model ('debater' or 'judge')
         qa_result: QA result dictionary from test_model_direct_qa
+        option_a: The text of option A (stored for validation)
+        option_b: The text of option B (stored for validation)
     """
     # Determine which model to use
     model_name = DEBATE_MODEL if model_type == 'debater' else JUDGE_MODEL
@@ -187,6 +203,13 @@ def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict) -> Non
         "temperature": DIRECT_QA_TEMPERATURE,
         "timestamp": datetime.now().isoformat()
     }
+    
+    # Store the option values for validation on retrieval
+    # This ensures we detect when choice order has changed
+    if option_a is not None:
+        cached_result["option_a"] = option_a
+    if option_b is not None:
+        cached_result["option_b"] = option_b
     
     # Save to cache
     question_key = str(question_idx)

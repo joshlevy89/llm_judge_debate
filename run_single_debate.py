@@ -999,7 +999,12 @@ def main():
         # Check cache first
         cached_debater_qa = None
         if USE_BASELINE_CACHE:
-            cached_debater_qa = baseline_cache.get_cached_qa(question_idx, 'debater')
+            cached_debater_qa = baseline_cache.get_cached_qa(
+                question_idx, 
+                'debater',
+                option_a=question_data['debater_a_answer'],
+                option_b=question_data['debater_b_answer']
+            )
         
         if cached_debater_qa:
             print("[Using cached result]")
@@ -1021,7 +1026,13 @@ def main():
             
             # Save to cache
             if SAVE_TO_BASELINE_CACHE:
-                baseline_cache.save_qa_to_cache(question_idx, 'debater', debater_qa)
+                baseline_cache.save_qa_to_cache(
+                    question_idx, 
+                    'debater', 
+                    debater_qa,
+                    option_a=question_data['debater_a_answer'],
+                    option_b=question_data['debater_b_answer']
+                )
         
         if debater_qa['selected_letter'] is None:
             print(f'debater_qa error: {debater_qa}')
@@ -1050,7 +1061,12 @@ def main():
         # Check cache first
         cached_judge_qa = None
         if USE_BASELINE_CACHE:
-            cached_judge_qa = baseline_cache.get_cached_qa(question_idx, 'judge')
+            cached_judge_qa = baseline_cache.get_cached_qa(
+                question_idx, 
+                'judge',
+                option_a=question_data['debater_a_answer'],
+                option_b=question_data['debater_b_answer']
+            )
         
         if cached_judge_qa:
             print("[Using cached result]")
@@ -1072,7 +1088,13 @@ def main():
             
             # Save to cache
             if SAVE_TO_BASELINE_CACHE:
-                baseline_cache.save_qa_to_cache(question_idx, 'judge', judge_qa)
+                baseline_cache.save_qa_to_cache(
+                    question_idx, 
+                    'judge', 
+                    judge_qa,
+                    option_a=question_data['debater_a_answer'],
+                    option_b=question_data['debater_b_answer']
+                )
         
         # Format output once (for file)
         cache_status = " [CACHED]" if judge_qa.get('cached') else ""
