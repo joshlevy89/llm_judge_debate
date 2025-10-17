@@ -593,7 +593,7 @@ Reasoning: [brief explanation of your decision]"""
 
 
 def save_config(output_dir, max_turns_used=None, seed=None, master_seed=None, quiet=False, output_dir_override=False):
-    """Save the current configuration to the output directory.
+    """Save the current configuration to the output directory as JSON.
     
     Args:
         output_dir: Directory to save config file
@@ -603,55 +603,54 @@ def save_config(output_dir, max_turns_used=None, seed=None, master_seed=None, qu
         quiet: Whether quiet mode was enabled
         output_dir_override: Whether output_dir was overridden via CLI
     """
-    config_file = Path(output_dir) / 'config_used.txt'
+    config_file = Path(output_dir) / 'config_used.json'
+    
+    # Use the actual value if provided, otherwise use default
+    actual_max_turns = max_turns_used if max_turns_used is not None else MAX_TURNS_DEFAULT
+    
+    config_dict = {
+        "model_configuration": {
+            "debate_model": DEBATE_MODEL,
+            "judge_model": JUDGE_MODEL
+        },
+        "temperature_settings": {
+            "direct_qa_temperature": DIRECT_QA_TEMPERATURE,
+            "judge_decision_temperature": JUDGE_DECISION_TEMPERATURE,
+            "final_verdict_temperature": FINAL_VERDICT_TEMPERATURE
+        },
+        "retry_configuration": {
+            "max_retries": MAX_RETRIES,
+            "retry_base_wait": RETRY_BASE_WAIT
+        },
+        "debate_configuration": {
+            "max_turns": actual_max_turns,
+            "max_turns_default": MAX_TURNS_DEFAULT,
+            "max_turns_overridden": max_turns_used is not None and max_turns_used != MAX_TURNS_DEFAULT,
+            "debater_word_limit": DEBATER_WORD_LIMIT,
+            "debate_mode": DEBATE_MODE
+        },
+        "dataset_configuration": {
+            "dataset_name": DATASET_NAME,
+            "dataset_subset": DATASET_SUBSET,
+            "dataset_split": DATASET_SPLIT
+        },
+        "baseline_cache_configuration": {
+            "use_baseline_cache": USE_BASELINE_CACHE,
+            "save_to_baseline_cache": SAVE_TO_BASELINE_CACHE,
+            "baseline_cache_dir": BASELINE_CACHE_DIR
+        },
+        "runtime_arguments": {
+            "seed": seed,
+            "master_seed": master_seed,
+            "quiet": quiet,
+            "output_dir": output_dir if output_dir_override else None,
+            "output_dir_overridden": output_dir_override
+        },
+        "timestamp": datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
     
     with open(config_file, 'w', encoding='utf-8') as f:
-        f.write("Configuration used for this run\n")
-        f.write("="*50 + "\n\n")
-        
-        f.write("# Model Configuration\n")
-        f.write(f"DEBATE_MODEL: {DEBATE_MODEL}\n")
-        f.write(f"JUDGE_MODEL: {JUDGE_MODEL}\n\n")
-        
-        f.write("# Temperature Settings\n")
-        f.write(f"DIRECT_QA_TEMPERATURE: {DIRECT_QA_TEMPERATURE}\n")
-        f.write(f"JUDGE_DECISION_TEMPERATURE: {JUDGE_DECISION_TEMPERATURE}\n")
-        f.write(f"FINAL_VERDICT_TEMPERATURE: {FINAL_VERDICT_TEMPERATURE}\n\n")
-        
-        f.write("# Retry Configuration\n")
-        f.write(f"MAX_RETRIES: {MAX_RETRIES}\n")
-        f.write(f"RETRY_BASE_WAIT: {RETRY_BASE_WAIT}\n\n")
-        
-        f.write("# Debate Configuration\n")
-        # Use the actual value if provided, otherwise use default
-        actual_max_turns = max_turns_used if max_turns_used is not None else MAX_TURNS_DEFAULT
-        f.write(f"MAX_TURNS: {actual_max_turns}")
-        if max_turns_used is not None and max_turns_used != MAX_TURNS_DEFAULT:
-            f.write(f" (default: {MAX_TURNS_DEFAULT}, overridden via CLI)")
-        f.write("\n")
-        f.write(f"DEBATER_WORD_LIMIT: {DEBATER_WORD_LIMIT}\n")
-        f.write(f"DEBATE_MODE: {DEBATE_MODE}\n\n")
-        
-        f.write("# Dataset Configuration\n")
-        f.write(f"DATASET_NAME: {DATASET_NAME}\n")
-        f.write(f"DATASET_SUBSET: {DATASET_SUBSET}\n")
-        f.write(f"DATASET_SPLIT: {DATASET_SPLIT}\n\n")
-        
-        f.write("# Baseline Cache Configuration\n")
-        f.write(f"USE_BASELINE_CACHE: {USE_BASELINE_CACHE}\n")
-        f.write(f"SAVE_TO_BASELINE_CACHE: {SAVE_TO_BASELINE_CACHE}\n")
-        f.write(f"BASELINE_CACHE_DIR: {BASELINE_CACHE_DIR}\n\n")
-        
-        f.write("# Command-line Arguments\n")
-        f.write(f"seed: {seed if seed is not None else 'None (random)'}\n")
-        if master_seed is not None:
-            f.write(f"master_seed: {master_seed}\n")
-        f.write(f"quiet: {quiet}\n")
-        if output_dir_override:
-            f.write(f"output_dir: {output_dir} (overridden via CLI)\n")
-        f.write("\n")
-        
-        f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        json.dump(config_dict, f, indent=2)
     
     return config_file
 
@@ -846,12 +845,12 @@ def append_error_to_file(text_file, error_info):
         f.write("\n")
 
 
-def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive, verdict_interactive, 
-                        debate_non_interactive, verdict_non_interactive, output_dir, run_id, csv_filename=None):
-    """Save results to CSV summary file.
+def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactive, verdict_interactive, 
+                          debate_non_interactive, verdict_non_interactive, output_dir, run_id, jsonl_filename=None):
+    """Save results to JSONL (JSON Lines) file with flexible schema.
     
     Note: The detailed text file should be written incrementally during the debate.
-    This function only handles the CSV summary.
+    This function only handles the JSONL summary.
     
     Args:
         debate_interactive, verdict_interactive: Can be None if interactive mode not run
@@ -860,17 +859,22 @@ def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive,
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     question_idx = question_data['question_idx']
 
-    # Base CSV row with shared columns
-    csv_row = {
+    # Build flexible result structure
+    result = {
         'run_id': run_id,
         'timestamp': timestamp,
         'question_idx': question_idx,
-        'debater_direct_correct': debater_qa['is_correct'],
-        'debater_confidence': debater_qa.get('confidence'),
-        'debater_cached': debater_qa.get('cached', False),
-        'judge_direct_correct': judge_qa['is_correct'],
-        'judge_confidence': judge_qa.get('confidence'),
-        'judge_cached': judge_qa.get('cached', False),
+        'debater_direct': {
+            'correct': debater_qa['is_correct'],
+            'confidence': debater_qa.get('confidence'),
+            'cached': debater_qa.get('cached', False),
+        },
+        'judge_direct': {
+            'correct': judge_qa['is_correct'],
+            'confidence': judge_qa.get('confidence'),
+            'cached': judge_qa.get('cached', False),
+        },
+        'modes': {}
     }
 
     # Add interactive results if available
@@ -883,19 +887,12 @@ def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive,
         
         judge_after_debate_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if winner_answer_interactive else None
         
-        csv_row.update({
-            'interactive_debate_turns': debate_interactive.turn_count,
-            'interactive_judge_verdict_winner': verdict_interactive.get('winner'),
-            'interactive_judge_after_debate_correct': judge_after_debate_correct_interactive,
-            'interactive_judge_after_debate_confidence': verdict_interactive.get('confidence'),
-        })
-    else:
-        csv_row.update({
-            'interactive_debate_turns': None,
-            'interactive_judge_verdict_winner': None,
-            'interactive_judge_after_debate_correct': None,
-            'interactive_judge_after_debate_confidence': None,
-        })
+        result['modes']['interactive'] = {
+            'turns': debate_interactive.turn_count,
+            'winner': verdict_interactive.get('winner'),
+            'correct': judge_after_debate_correct_interactive,
+            'confidence': verdict_interactive.get('confidence'),
+        }
 
     # Add non-interactive results if available
     if debate_non_interactive is not None and verdict_non_interactive is not None:
@@ -907,33 +904,22 @@ def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive,
         
         judge_after_debate_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if winner_answer_non_interactive else None
         
-        csv_row.update({
-            'non_interactive_debate_turns': debate_non_interactive.turn_count,
-            'non_interactive_judge_verdict_winner': verdict_non_interactive.get('winner'),
-            'non_interactive_judge_after_debate_correct': judge_after_debate_correct_non_interactive,
-            'non_interactive_judge_after_debate_confidence': verdict_non_interactive.get('confidence'),
-        })
-    else:
-        csv_row.update({
-            'non_interactive_debate_turns': None,
-            'non_interactive_judge_verdict_winner': None,
-            'non_interactive_judge_after_debate_correct': None,
-            'non_interactive_judge_after_debate_confidence': None,
-        })
+        result['modes']['non_interactive'] = {
+            'turns': debate_non_interactive.turn_count,
+            'winner': verdict_non_interactive.get('winner'),
+            'correct': judge_after_debate_correct_non_interactive,
+            'confidence': verdict_non_interactive.get('confidence'),
+        }
 
-    # Save to CSV (append mode)
-    if csv_filename is None:
-        csv_filename = 'debate_results_summary.csv'
-    csv_file = Path(output_dir) / csv_filename
-    file_exists = csv_file.exists()
+    # Save to JSONL (append mode)
+    if jsonl_filename is None:
+        jsonl_filename = 'master_results.jsonl'
+    jsonl_file = Path(output_dir) / jsonl_filename
 
-    with open(csv_file, 'a', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=csv_row.keys())
-        if not file_exists:
-            writer.writeheader()
-        writer.writerow(csv_row)
+    with open(jsonl_file, 'a', encoding='utf-8') as f:
+        f.write(json.dumps(result) + '\n')
 
-    return csv_file
+    return jsonl_file
 
 
 def main():
@@ -950,8 +936,8 @@ def main():
                         help='Suppress verbose output')
     parser.add_argument('--run-id', type=str, default=None,
                         help='Unique run identifier (auto-generated if not provided)')
-    parser.add_argument('--csv-filename', type=str, default=None,
-                        help='CSV filename to append results to (default: debate_results_summary.csv)')
+    parser.add_argument('--jsonl-filename', type=str, default=None,
+                        help='JSONL filename to append results to (default: master_results.jsonl)')
 
     args = parser.parse_args()
     
@@ -964,7 +950,7 @@ def main():
     os.makedirs(args.output_dir, exist_ok=True)
     
     # Save config file (only once per output directory)
-    config_file = Path(args.output_dir) / 'config_used.txt'
+    config_file = Path(args.output_dir) / 'config_used.json'
     if not config_file.exists():
         output_dir_override = '--output-dir' in sys.argv
         save_config(
@@ -1192,15 +1178,15 @@ def main():
         # Write summary to file immediately
         append_summary_to_file(text_file, summary)
 
-        # Save results to CSV
-        print(f"{step_num}. Saving CSV results...")
-        csv_file = save_results_to_csv(question_data, debater_qa, judge_qa, 
-                                        debate_interactive, verdict_interactive, 
-                                        debate_non_interactive, verdict_non_interactive,
-                                        args.output_dir, args.run_id, 
-                                        csv_filename=args.csv_filename)
+        # Save results to JSONL
+        print(f"{step_num}. Saving results...")
+        jsonl_file = save_results_to_jsonl(question_data, debater_qa, judge_qa, 
+                                           debate_interactive, verdict_interactive, 
+                                           debate_non_interactive, verdict_non_interactive,
+                                           args.output_dir, args.run_id, 
+                                           jsonl_filename=args.jsonl_filename)
         print(f"   Run ID: {args.run_id}")
-        print(f"   CSV: {csv_file}")
+        print(f"   JSONL: {jsonl_file}")
         print(f"   Details: {text_file}")
 
         print("\nDone!")

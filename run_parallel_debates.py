@@ -12,7 +12,7 @@ import sys
 import subprocess
 import argparse
 import time
-import csv
+import json
 import random
 from datetime import datetime
 from pathlib import Path
@@ -22,7 +22,7 @@ import glob
 from config import MAX_TURNS_DEFAULT
 
 
-def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str, seed: int = None, 
+def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: str, seed: int = None, 
                                max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = False, 
                                master_seed: int = None) -> subprocess.Popen:
     """
@@ -48,7 +48,7 @@ def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str
         '-u',  # Unbuffered output for real-time logging
         'run_single_debate.py',
         '--output-dir', output_dir,
-        '--csv-filename', csv_filename,
+        '--jsonl-filename', jsonl_filename,
         '--max-turns', str(max_turns),
         '--run-id', run_id,  # Pass unique identifier
     ]
@@ -76,26 +76,28 @@ def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str
     return process, run_id
 
 
-def print_aggregate_stats(master_csv: str):
-    """Print summary statistics from master CSV."""
-    if not Path(master_csv).exists():
+def print_aggregate_stats(master_jsonl: str):
+    """Print summary statistics from master JSONL file."""
+    if not Path(master_jsonl).exists():
         return
     
-    with open(master_csv, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        rows = list(reader)
+    # Load all results from JSONL
+    results = []
+    with open(master_jsonl, 'r', encoding='utf-8') as f:
+        for line in f:
+            if line.strip():
+                results.append(json.loads(line))
     
-    if not rows:
+    if not results:
         return
     
-    # Check which columns are available (to support flexible debate modes)
-    columns = rows[0].keys() if rows else []
-    has_interactive = 'interactive_judge_after_debate_correct' in columns
-    has_non_interactive = 'non_interactive_judge_after_debate_correct' in columns
+    # Check which modes are available
+    has_interactive = any('interactive' in r.get('modes', {}) for r in results)
+    has_non_interactive = any('non_interactive' in r.get('modes', {}) for r in results)
     
-    total = len(rows)
-    debater_correct = sum(1 for r in rows if r.get('debater_direct_correct') == 'True')
-    judge_direct_correct = sum(1 for r in rows if r.get('judge_direct_correct') == 'True')
+    total = len(results)
+    debater_correct = sum(1 for r in results if r.get('debater_direct', {}).get('correct'))
+    judge_direct_correct = sum(1 for r in results if r.get('judge_direct', {}).get('correct'))
     
     print("\n" + "="*70)
     print("AGGREGATE STATISTICS")
@@ -105,12 +107,16 @@ def print_aggregate_stats(master_csv: str):
     print(f"Judge direct QA accuracy: {judge_direct_correct}/{total} ({100*judge_direct_correct/total:.1f}%)")
     
     if has_interactive:
-        judge_after_interactive_correct = sum(1 for r in rows if r.get('interactive_judge_after_debate_correct') == 'True')
-        print(f"Judge after interactive debate accuracy: {judge_after_interactive_correct}/{total} ({100*judge_after_interactive_correct/total:.1f}%)")
+        # Count results that have interactive mode
+        interactive_results = [r for r in results if 'interactive' in r.get('modes', {})]
+        interactive_correct = sum(1 for r in interactive_results if r['modes']['interactive'].get('correct'))
+        print(f"Judge after interactive debate accuracy: {interactive_correct}/{len(interactive_results)} ({100*interactive_correct/len(interactive_results):.1f}%)")
     
     if has_non_interactive:
-        judge_after_non_interactive_correct = sum(1 for r in rows if r.get('non_interactive_judge_after_debate_correct') == 'True')
-        print(f"Judge after non-interactive debate accuracy: {judge_after_non_interactive_correct}/{total} ({100*judge_after_non_interactive_correct/total:.1f}%)")
+        # Count results that have non-interactive mode
+        non_interactive_results = [r for r in results if 'non_interactive' in r.get('modes', {})]
+        non_interactive_correct = sum(1 for r in non_interactive_results if r['modes']['non_interactive'].get('correct'))
+        print(f"Judge after non-interactive debate accuracy: {non_interactive_correct}/{len(non_interactive_results)} ({100*non_interactive_correct/len(non_interactive_results):.1f}%)")
     
     print("="*70)
 
@@ -134,7 +140,7 @@ def main():
 Examples:
   # Run 2 debates in parallel
   python run_parallel_debates.py --num-debates 2
-  # Creates: master_results_random_n2_20251016_120155/ with CSV and detail files
+  # Creates: master_results_random_n2_20251016_120155/ with JSONL and detail files
 
   # Run 100 debates with max 20 concurrent (to avoid rate limits)
   python run_parallel_debates.py --num-debates 100 --max-concurrent 20 --wait
@@ -160,8 +166,8 @@ Examples:
                         help='Maximum number of debates to run concurrently (default: all at once). Use this to avoid rate limits.')
     parser.add_argument('--output-dir', type=str, default='./parallel_debate_runs',
                         help='Output directory for results (default: ./parallel_debate_runs)')
-    parser.add_argument('--master-csv', type=str, default=None,
-                        help='Path to master CSV for aggregated results (default: auto-generated descriptive name)')
+    parser.add_argument('--master-jsonl', type=str, default=None,
+                        help='Path to master JSONL for aggregated results (default: auto-generated descriptive name)')
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility (generates deterministic seeds for each debate)')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
@@ -184,37 +190,37 @@ Examples:
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Generate descriptive run folder name and master CSV filename
-    if args.master_csv:
-        master_csv = args.master_csv
-        # Extract folder name from custom CSV path
-        run_folder_name = Path(master_csv).stem
+    # Generate descriptive run folder name and master JSONL filename
+    if args.master_jsonl:
+        master_jsonl = args.master_jsonl
+        # Extract folder name from custom JSONL path
+        run_folder_name = Path(master_jsonl).stem
         run_output_dir = str(Path(args.output_dir) / run_folder_name)
     else:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
         # Build descriptive filename
-        filename_parts = ['master_results']
+        filename_parts = ['run']
         
-        # Add seed info
-        if args.seed is not None:
-            filename_parts.append(f'seed{args.seed}')
-        else:
-            filename_parts.append('random')
+        # # Add seed info
+        # if args.seed is not None:
+        #     filename_parts.append(f'seed{args.seed}')
+        # else:
+        #     filename_parts.append('random')
         
         # Add number of debates
-        filename_parts.append(f'n{args.num_debates}')
+        # filename_parts.append(f'n{args.num_debates}')
         
         # Add max turns if not default
-        if args.max_turns != MAX_TURNS_DEFAULT:
-            filename_parts.append(f'turns{args.max_turns}')
+        # if args.max_turns != MAX_TURNS_DEFAULT:
+        #     filename_parts.append(f'turns{args.max_turns}')
         
         # Add timestamp
         filename_parts.append(timestamp)
         
         run_folder_name = '_'.join(filename_parts)
         run_output_dir = str(Path(args.output_dir) / run_folder_name)
-        master_csv = str(Path(run_output_dir) / 'master_results.csv')
+        master_jsonl = str(Path(run_output_dir) / 'master_results.jsonl')
     
     # Create run-specific output directory
     os.makedirs(run_output_dir, exist_ok=True)
@@ -229,11 +235,11 @@ Examples:
     if args.max_concurrent and args.max_concurrent < args.num_debates:
         print(f"Max concurrent: {max_concurrent} (batched to avoid rate limits)")
     print(f"Run folder: {run_output_dir}")
-    print(f"Master CSV: {master_csv}")
+    print(f"Master JSONL: {master_jsonl}")
     print(f"Max turns per debate: {args.max_turns}")
     print("="*70)
     
-    # Note: No need to backup individual CSV since each run has its own folder
+    # Note: No need to backup individual JSONL since each run has its own folder
     
     # Launch debate processes in batches
     all_processes = []
@@ -251,7 +257,7 @@ Examples:
             process, run_id = run_single_debate_process(
                 debate_id=i+1,
                 output_dir=run_output_dir,
-                csv_filename=Path(master_csv).name,  # Just the filename, not full path
+                jsonl_filename=Path(master_jsonl).name,  # Just the filename, not full path
                 seed=seed,
                 max_turns=args.max_turns,
                 quiet=args.quiet,
@@ -322,12 +328,12 @@ Examples:
     print("All debates completed!")
     print("="*70)
     
-    # Print statistics (debates already wrote directly to master CSV)
-    print_aggregate_stats(master_csv)
+    # Print statistics (debates already wrote directly to master JSONL)
+    print_aggregate_stats(master_jsonl)
     
     # List generated files
     print("\nGenerated files:")
-    print(f"  Results CSV: {master_csv}")
+    print(f"  Results JSONL: {master_jsonl}")
     
     # List detail files
     detail_files = sorted(Path(run_output_dir).glob('debate_detail_*.txt'))
