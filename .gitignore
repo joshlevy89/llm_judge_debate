@@ -3,3 +3,4 @@
 .DS_Store
 .env
 test_debate_results/
+__pycache__/

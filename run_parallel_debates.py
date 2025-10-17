@@ -18,9 +18,11 @@ from pathlib import Path
 from typing import List, Dict
 import glob
 
+from config import MAX_TURNS_DEFAULT
+
 
 def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str, seed: int = None, 
-                               max_turns: int = 20, quiet: bool = False) -> subprocess.Popen:
+                               max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = False) -> subprocess.Popen:
     """
     Launch a single debate as a subprocess.
     
@@ -56,7 +58,7 @@ def run_single_debate_process(debate_id: int, output_dir: str, csv_filename: str
         cmd.append('--quiet')
     
     # Launch process with output redirected to devnull (we save everything in detail.txt files)
-    print(f"[Debate {debate_id}] Starting... (run_id: {run_id})")
+    print(f"[run_id: {run_id}] Starting...")
     
     process = subprocess.Popen(
         cmd,
@@ -140,8 +142,8 @@ Examples:
                         help='Path to master CSV for aggregated results (default: auto-generated descriptive name)')
     parser.add_argument('--seeds', type=int, nargs='+', default=None,
                         help='Random seeds for each debate (must match --num-debates)')
-    parser.add_argument('--max-turns', type=int, default=20,
-                        help='Maximum number of debate turns (default: 20)')
+    parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
+                        help=f'Maximum number of debate turns (default: {MAX_TURNS_DEFAULT})')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress verbose output in debate processes')
     parser.add_argument('--wait', action='store_true',
@@ -181,7 +183,7 @@ Examples:
         filename_parts.append(f'n{args.num_debates}')
         
         # Add max turns if not default
-        if args.max_turns != 20:
+        if args.max_turns != MAX_TURNS_DEFAULT:
             filename_parts.append(f'turns{args.max_turns}')
         
         # Add timestamp
@@ -207,7 +209,6 @@ Examples:
     
     # Launch debate processes
     processes = []
-    run_ids = []
     
     for i in range(args.num_debates):
         seed = args.seeds[i] if args.seeds else None
@@ -219,8 +220,7 @@ Examples:
             max_turns=args.max_turns,
             quiet=args.quiet
         )
-        processes.append((i+1, process))
-        run_ids.append(run_id)
+        processes.append((run_id, process))
     
     # Print monitoring hints
     print_debate_progress_hint()
@@ -243,15 +243,15 @@ Examples:
     completed = [False] * len(processes)
     
     while not all(completed):
-        for idx, (debate_id, process) in enumerate(processes):
+        for idx, (run_id, process) in enumerate(processes):
             if not completed[idx]:
                 retcode = process.poll()
                 if retcode is not None:
                     completed[idx] = True
                     if retcode == 0:
-                        print(f"[Debate {debate_id}] ✓ Completed successfully")
+                        print(f"[run_id: {run_id}] ✓ Completed successfully")
                     else:
-                        print(f"[Debate {debate_id}] ✗ Failed with exit code {retcode}")
+                        print(f"[run_id: {run_id}] ✗ Failed with exit code {retcode}")
         
         if not all(completed):
             time.sleep(1)

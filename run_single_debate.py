@@ -18,6 +18,7 @@ import time
 import random
 import argparse
 import csv
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -27,16 +28,19 @@ from openai import OpenAI
 from datasets import load_dataset
 from dotenv import load_dotenv
 
+from config import (
+    DEBATE_MODEL, JUDGE_MODEL,
+    DIRECT_QA_TEMPERATURE, JUDGE_DECISION_TEMPERATURE, FINAL_VERDICT_TEMPERATURE,
+    MAX_RETRIES, RETRY_BASE_WAIT,
+    MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT
+)
+
 # Load environment variables
 load_dotenv()
 
 # Initialize API clients
 genai_client = genai.Client(api_key=os.environ['GEMINI_API_KEY'])
 openai_client = OpenAI(api_key=os.environ['OPENAI_API_KEY'])
-
-# Model configuration
-DEBATE_MODEL = 'gemini-2.5-flash'
-JUDGE_MODEL = 'gpt-4o-mini'
 
 
 def load_gpqa_question(random_seed=None):
@@ -122,14 +126,14 @@ Reasoning: [brief explanation]"""
             response = genai_client.models.generate_content(
                 model=DEBATE_MODEL,
                 contents=prompt,
-                config=types.GenerateContentConfig(temperature=0.0)
+                config=types.GenerateContentConfig(temperature=DIRECT_QA_TEMPERATURE)
             )
             answer_text = response.text.strip()
         else:  # judge
             response = openai_client.chat.completions.create(
                 model=JUDGE_MODEL,
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.0
+                temperature=DIRECT_QA_TEMPERATURE
             )
             answer_text = response.choices[0].message.content.strip()
 
@@ -236,12 +240,12 @@ IMPORTANT - Mathematical notation formatting:
   - Kets: $|\\uparrow\\rangle$ for quantum states
 - For simple inline expressions, you can also use plain text with proper spacing
 
-Important!!!! Each response should NOT exceed a short paragraph in length. So no more than 200 words. This is a critical cutoff.
+Important!!!! Each response should NOT exceed a short paragraph in length. So no more than {DEBATER_WORD_LIMIT} words. This is a critical cutoff.
 If your output is longer than that, you will automatically lose the debate.
 """
 
 
-def debate_round(question, debater_a_answer, debater_b_answer, history, current_debater, max_retries=3):
+def debate_round(question, debater_a_answer, debater_b_answer, history, current_debater, max_retries=MAX_RETRIES):
     """Run a single debate round with retry logic."""
     opponent = 'B' if current_debater == 'A' else 'A'
     my_answer = debater_a_answer if current_debater == 'A' else debater_b_answer
@@ -272,7 +276,7 @@ def debate_round(question, debater_a_answer, debater_b_answer, history, current_
             )
 
             if is_retryable and attempt < max_retries - 1:
-                wait_time = 2 ** (attempt + 1)
+                wait_time = RETRY_BASE_WAIT ** (attempt + 1)
                 print(f"[Retrying in {wait_time}s due to: {error_msg[:100]}...]")
                 time.sleep(wait_time)
                 continue
@@ -309,7 +313,7 @@ Do not provide explanations or commentary - just the action."""
 class LLMJudgeDebate:
     """Manages an LLM-judged debate."""
 
-    def __init__(self, question, debater_a_answer, debater_b_answer, max_turns=20, verbose=True, interactive=True):
+    def __init__(self, question, debater_a_answer, debater_b_answer, max_turns=MAX_TURNS_DEFAULT, verbose=True, interactive=True):
         self.question = question
         self.debater_a_answer = debater_a_answer
         self.debater_b_answer = debater_b_answer
@@ -362,7 +366,7 @@ What is your next action?"""
                     {"role": "system", "content": self.judge_prompt},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.7
+                temperature=JUDGE_DECISION_TEMPERATURE
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
@@ -501,7 +505,7 @@ Reasoning: [brief explanation of your decision]"""
         response = openai_client.chat.completions.create(
             model=JUDGE_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3
+            temperature=FINAL_VERDICT_TEMPERATURE
         )
 
         verdict_text = response.choices[0].message.content.strip()
@@ -540,18 +544,239 @@ Reasoning: [brief explanation of your decision]"""
         }
 
 
-def save_results(question_data, debater_qa, judge_qa, debate_interactive, verdict_interactive, 
-                 debate_non_interactive, verdict_non_interactive, output_dir, debater_qa_output, judge_qa_output, summary, run_id=None, csv_filename=None):
-    """Save results to CSV summary and detailed text file."""
-    os.makedirs(output_dir, exist_ok=True)
+def save_config(output_dir, max_turns_used=None):
+    """Save the current configuration to the output directory.
+    
+    Args:
+        output_dir: Directory to save config file
+        max_turns_used: Actual max_turns value used in this run (if different from default)
+    """
+    config_file = Path(output_dir) / 'config_used.txt'
+    
+    with open(config_file, 'w', encoding='utf-8') as f:
+        f.write("Configuration used for this run\n")
+        f.write("="*50 + "\n\n")
+        
+        f.write("# Model Configuration\n")
+        f.write(f"DEBATE_MODEL: {DEBATE_MODEL}\n")
+        f.write(f"JUDGE_MODEL: {JUDGE_MODEL}\n\n")
+        
+        f.write("# Temperature Settings\n")
+        f.write(f"DIRECT_QA_TEMPERATURE: {DIRECT_QA_TEMPERATURE}\n")
+        f.write(f"JUDGE_DECISION_TEMPERATURE: {JUDGE_DECISION_TEMPERATURE}\n")
+        f.write(f"FINAL_VERDICT_TEMPERATURE: {FINAL_VERDICT_TEMPERATURE}\n\n")
+        
+        f.write("# Retry Configuration\n")
+        f.write(f"MAX_RETRIES: {MAX_RETRIES}\n")
+        f.write(f"RETRY_BASE_WAIT: {RETRY_BASE_WAIT}\n\n")
+        
+        f.write("# Debate Limits\n")
+        # Use the actual value if provided, otherwise use default
+        actual_max_turns = max_turns_used if max_turns_used is not None else MAX_TURNS_DEFAULT
+        f.write(f"MAX_TURNS: {actual_max_turns}")
+        if max_turns_used is not None and max_turns_used != MAX_TURNS_DEFAULT:
+            f.write(f" (default: {MAX_TURNS_DEFAULT}, overridden via CLI)")
+        f.write("\n")
+        f.write(f"DEBATER_WORD_LIMIT: {DEBATER_WORD_LIMIT}\n\n")
+        
+        f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    
+    return config_file
 
+
+def initialize_debate_detail_file(text_file, question_data, run_id):
+    """Initialize the debate detail file with header and question info.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        question_data: Dictionary containing question information
+        run_id: Unique run identifier
+    """
+    with open(text_file, 'w', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write("DEBATE ANALYSIS RESULTS\n")
+        f.write(f"Run ID: {run_id}\n")
+        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write("="*80 + "\n\n")
+
+        # Question
+        f.write("="*80 + "\n")
+        f.write("QUESTION\n")
+        f.write("="*80 + "\n")
+        f.write(f"Question Index: {question_data['question_idx']}\n")
+        f.write(f"Question: {question_data['question']}\n\n")
+        f.write(f"Correct Answer: {question_data['correct_answer']}\n")
+        f.write(f"Incorrect Answer: {question_data['incorrect_answer']}\n\n")
+
+
+def append_debater_qa_to_file(text_file, question_data, debater_qa_output):
+    """Append debater direct QA results to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        question_data: Dictionary containing question information
+        debater_qa_output: Formatted debater QA output string
+    """
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write(f"1. DEBATER MODEL DIRECT QA ({DEBATE_MODEL})\n")
+        f.write("="*80 + "\n")
+        f.write(f"Options presented: A) {question_data['debater_a_answer']}, B) {question_data['debater_b_answer']}\n\n")
+        f.write(debater_qa_output + "\n\n")
+
+
+def append_judge_qa_to_file(text_file, question_data, judge_qa_output):
+    """Append judge direct QA results to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        question_data: Dictionary containing question information
+        judge_qa_output: Formatted judge QA output string
+    """
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write(f"2. JUDGE MODEL DIRECT QA ({JUDGE_MODEL})\n")
+        f.write("="*80 + "\n")
+        f.write(f"Options presented: A) {question_data['debater_a_answer']}, B) {question_data['debater_b_answer']}\n\n")
+        f.write(judge_qa_output + "\n\n")
+
+
+def append_interactive_debate_to_file(text_file, debate_interactive):
+    """Append interactive debate transcript to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        debate_interactive: LLMJudgeDebate object with completed debate
+    """
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write("3. LLM-JUDGED DEBATE (INTERACTIVE)\n")
+        f.write("="*80 + "\n")
+        f.write(f"Debater A arguing for: {debate_interactive.debater_a_answer}\n")
+        f.write(f"Debater B arguing for: {debate_interactive.debater_b_answer}\n")
+        f.write(f"Total turns: {debate_interactive.turn_count}\n\n")
+        f.write("Debate Transcript:\n")
+        f.write(debate_interactive.history)
+        f.write("\n\n")
+
+
+def append_interactive_verdict_to_file(text_file, verdict_interactive, debate_interactive, question_data):
+    """Append interactive verdict to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        verdict_interactive: Dictionary containing verdict information
+        debate_interactive: LLMJudgeDebate object
+        question_data: Dictionary containing question information
+    """
+    winner_answer_interactive = None
+    if verdict_interactive['winner'] == 'A':
+        winner_answer_interactive = debate_interactive.debater_a_answer
+    elif verdict_interactive['winner'] == 'B':
+        winner_answer_interactive = debate_interactive.debater_b_answer
+    
+    judge_after_debate_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if winner_answer_interactive else None
+    
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write("4. FINAL VERDICT (INTERACTIVE)\n")
+        f.write("="*80 + "\n")
+        f.write(f"Winner: Debater {verdict_interactive.get('winner')}\n")
+        if winner_answer_interactive:
+            f.write(f"Judge Selected: {winner_answer_interactive}\n")
+            f.write(f"Result: {'CORRECT' if judge_after_debate_correct_interactive else 'INCORRECT'}\n")
+        f.write(f"Confidence: {verdict_interactive.get('confidence')}%\n")
+        if verdict_interactive.get('reasoning'):
+            f.write(f"\nReasoning:\n{verdict_interactive['reasoning']}\n")
+        f.write(f"\nFull Response:\n{verdict_interactive['raw_response']}\n\n")
+
+
+def append_non_interactive_debate_to_file(text_file, debate_non_interactive):
+    """Append non-interactive debate transcript to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        debate_non_interactive: LLMJudgeDebate object with completed debate
+    """
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write("5. LLM-JUDGED DEBATE (NON-INTERACTIVE)\n")
+        f.write("="*80 + "\n")
+        f.write(f"Debater A arguing for: {debate_non_interactive.debater_a_answer}\n")
+        f.write(f"Debater B arguing for: {debate_non_interactive.debater_b_answer}\n")
+        f.write(f"Total turns: {debate_non_interactive.turn_count}\n\n")
+        f.write("Debate Transcript:\n")
+        f.write(debate_non_interactive.history)
+        f.write("\n\n")
+
+
+def append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, debate_non_interactive, question_data):
+    """Append non-interactive verdict to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        verdict_non_interactive: Dictionary containing verdict information
+        debate_non_interactive: LLMJudgeDebate object
+        question_data: Dictionary containing question information
+    """
+    winner_answer_non_interactive = None
+    if verdict_non_interactive['winner'] == 'A':
+        winner_answer_non_interactive = debate_non_interactive.debater_a_answer
+    elif verdict_non_interactive['winner'] == 'B':
+        winner_answer_non_interactive = debate_non_interactive.debater_b_answer
+    
+    judge_after_debate_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if winner_answer_non_interactive else None
+    
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write("6. FINAL VERDICT (NON-INTERACTIVE)\n")
+        f.write("="*80 + "\n")
+        f.write(f"Winner: Debater {verdict_non_interactive.get('winner')}\n")
+        if winner_answer_non_interactive:
+            f.write(f"Judge Selected: {winner_answer_non_interactive}\n")
+            f.write(f"Result: {'CORRECT' if judge_after_debate_correct_non_interactive else 'INCORRECT'}\n")
+        f.write(f"Confidence: {verdict_non_interactive.get('confidence')}%\n")
+        if verdict_non_interactive.get('reasoning'):
+            f.write(f"\nReasoning:\n{verdict_non_interactive['reasoning']}\n")
+        f.write(f"\nFull Response:\n{verdict_non_interactive['raw_response']}\n\n")
+
+
+def append_summary_to_file(text_file, summary):
+    """Append summary to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        summary: Summary string to append
+    """
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write(summary)
+
+
+def append_error_to_file(text_file, error_info):
+    """Append error information to the debate detail file.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        error_info: Error information string to append
+    """
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("\n\n")
+        f.write("="*80 + "\n")
+        f.write("ERROR OCCURRED\n")
+        f.write("="*80 + "\n")
+        f.write(error_info)
+        f.write("\n")
+
+
+def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive, verdict_interactive, 
+                        debate_non_interactive, verdict_non_interactive, output_dir, run_id, csv_filename=None):
+    """Save results to CSV summary file.
+    
+    Note: The detailed text file should be written incrementally during the debate.
+    This function only handles the CSV summary.
+    """
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     question_idx = question_data['question_idx']
-    
-    # Generate run_id if not provided
-    if run_id is None:
-        import uuid
-        run_id = str(uuid.uuid4())[:8]
 
     # Prepare CSV row with both interactive and non-interactive results
     # Interactive results
@@ -602,91 +827,7 @@ def save_results(question_data, debater_qa, judge_qa, debate_interactive, verdic
             writer.writeheader()
         writer.writerow(csv_row)
 
-    # Save detailed text file with run_id for easy matching
-    text_file = Path(output_dir) / f'debate_detail_{run_id}_{timestamp}_{question_idx}.txt'
-
-    with open(text_file, 'w', encoding='utf-8') as f:
-        f.write("="*80 + "\n")
-        f.write("DEBATE ANALYSIS RESULTS\n")
-        f.write(f"Run ID: {run_id}\n")
-        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-        f.write("="*80 + "\n\n")
-
-        # Question
-        f.write("="*80 + "\n")
-        f.write("QUESTION\n")
-        f.write("="*80 + "\n")
-        f.write(f"Question Index: {question_idx}\n")
-        f.write(f"Question: {question_data['question']}\n\n")
-        f.write(f"Correct Answer: {question_data['correct_answer']}\n")
-        f.write(f"Incorrect Answer: {question_data['incorrect_answer']}\n\n")
-
-        # Debater Direct QA
-        f.write("="*80 + "\n")
-        f.write(f"1. DEBATER MODEL DIRECT QA ({DEBATE_MODEL})\n")
-        f.write("="*80 + "\n")
-        f.write(f"Options presented: A) {question_data['debater_a_answer']}, B) {question_data['debater_b_answer']}\n\n")
-        f.write(debater_qa_output + "\n\n")
-
-        # Judge Direct QA
-        f.write("="*80 + "\n")
-        f.write(f"2. JUDGE MODEL DIRECT QA ({JUDGE_MODEL})\n")
-        f.write("="*80 + "\n")
-        f.write(f"Options presented: A) {question_data['debater_a_answer']}, B) {question_data['debater_b_answer']}\n\n")
-        f.write(judge_qa_output + "\n\n")
-
-        # Interactive Debate
-        f.write("="*80 + "\n")
-        f.write("3. LLM-JUDGED DEBATE (INTERACTIVE)\n")
-        f.write("="*80 + "\n")
-        f.write(f"Debater A arguing for: {debate_interactive.debater_a_answer}\n")
-        f.write(f"Debater B arguing for: {debate_interactive.debater_b_answer}\n")
-        f.write(f"Total turns: {debate_interactive.turn_count}\n\n")
-        f.write("Debate Transcript:\n")
-        f.write(debate_interactive.history)
-        f.write("\n\n")
-
-        # Interactive Verdict
-        f.write("="*80 + "\n")
-        f.write("4. FINAL VERDICT (INTERACTIVE)\n")
-        f.write("="*80 + "\n")
-        f.write(f"Winner: Debater {verdict_interactive.get('winner')}\n")
-        if winner_answer_interactive:
-            f.write(f"Judge Selected: {winner_answer_interactive}\n")
-            f.write(f"Result: {'CORRECT' if judge_after_debate_correct_interactive else 'INCORRECT'}\n")
-        f.write(f"Confidence: {verdict_interactive.get('confidence')}%\n")
-        if verdict_interactive.get('reasoning'):
-            f.write(f"\nReasoning:\n{verdict_interactive['reasoning']}\n")
-        f.write(f"\nFull Response:\n{verdict_interactive['raw_response']}\n\n")
-
-        # Non-Interactive Debate
-        f.write("="*80 + "\n")
-        f.write("5. LLM-JUDGED DEBATE (NON-INTERACTIVE)\n")
-        f.write("="*80 + "\n")
-        f.write(f"Debater A arguing for: {debate_non_interactive.debater_a_answer}\n")
-        f.write(f"Debater B arguing for: {debate_non_interactive.debater_b_answer}\n")
-        f.write(f"Total turns: {debate_non_interactive.turn_count}\n\n")
-        f.write("Debate Transcript:\n")
-        f.write(debate_non_interactive.history)
-        f.write("\n\n")
-
-        # Non-Interactive Verdict
-        f.write("="*80 + "\n")
-        f.write("6. FINAL VERDICT (NON-INTERACTIVE)\n")
-        f.write("="*80 + "\n")
-        f.write(f"Winner: Debater {verdict_non_interactive.get('winner')}\n")
-        if winner_answer_non_interactive:
-            f.write(f"Judge Selected: {winner_answer_non_interactive}\n")
-            f.write(f"Result: {'CORRECT' if judge_after_debate_correct_non_interactive else 'INCORRECT'}\n")
-        f.write(f"Confidence: {verdict_non_interactive.get('confidence')}%\n")
-        if verdict_non_interactive.get('reasoning'):
-            f.write(f"\nReasoning:\n{verdict_non_interactive['reasoning']}\n")
-        f.write(f"\nFull Response:\n{verdict_non_interactive['raw_response']}\n\n")
-
-        # Summary
-        f.write(summary)
-
-    return csv_file, text_file
+    return csv_file
 
 
 def main():
@@ -695,7 +836,7 @@ def main():
                         help='Output directory for results')
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility')
-    parser.add_argument('--max-turns', type=int, default=20,
+    parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help='Maximum number of debate turns')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress verbose output')
@@ -710,137 +851,197 @@ def main():
     if args.run_id is None:
         import uuid
         args.run_id = str(uuid.uuid4())[:8]
+    
+    # Setup output directory and file paths
+    os.makedirs(args.output_dir, exist_ok=True)
+    
+    # Save config file (only once per output directory)
+    config_file = Path(args.output_dir) / 'config_used.txt'
+    if not config_file.exists():
+        save_config(args.output_dir, max_turns_used=args.max_turns)
 
     print("Loading GPQA question...")
     question_data = load_gpqa_question(random_seed=args.seed)
+    
+    # Initialize debate detail file with header and question
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    question_idx = question_data['question_idx']
+    text_file = Path(args.output_dir) / f'debate_detail_{args.run_id}_{timestamp}_{question_idx}.txt'
+    
+    try:
+        initialize_debate_detail_file(text_file, question_data, args.run_id)
 
-    print(f"\nQuestion {question_data['question_idx']}:")
-    print(question_data['question'])
-    print(f"\nDebater A: {question_data['debater_a_answer']} ({question_data['debater_a_position']})")
-    print(f"Debater B: {question_data['debater_b_answer']} ({question_data['debater_b_position']})")
+        print(f"\nQuestion {question_data['question_idx']}:")
+        print(question_data['question'])
+        print(f"\nDebater A: {question_data['debater_a_answer']} ({question_data['debater_a_position']})")
+        print(f"Debater B: {question_data['debater_b_answer']} ({question_data['debater_b_position']})")
 
-    # Test debater direct QA
-    print("\n" + "="*70)
-    print("1. DEBATER MODEL DIRECT QA")
-    print("="*70)
-    debater_qa = test_model_direct_qa(
-        question_data['question'],
-        question_data['debater_a_answer'],
-        question_data['debater_b_answer'],
-        question_data['correct_answer'],
-        model_type='debater'
-    )
-    if debater_qa['selected_letter'] is None:
-        print(f'debater_qa error: {debater_qa}')
-    # Format output once (for file)
-    debater_qa_output = f"Selected: {debater_qa['selected_letter']} - {debater_qa['selected_answer']}\n"
-    debater_qa_output += f"Result: {'CORRECT' if debater_qa['is_correct'] else 'INCORRECT'}\n"
-    debater_qa_output += f"Confidence: {debater_qa.get('confidence')}%\n"
-    if debater_qa.get('reasoning'):
-        debater_qa_output += f"Reasoning: {debater_qa['reasoning']}\n"
-    # debater_qa_output += f"\nFull Response:\n{debater_qa['raw_response']}"
+        # Test debater direct QA
+        print("\n" + "="*70)
+        print("1. DEBATER MODEL DIRECT QA")
+        print("="*70)
+        debater_qa = test_model_direct_qa(
+            question_data['question'],
+            question_data['debater_a_answer'],
+            question_data['debater_b_answer'],
+            question_data['correct_answer'],
+            model_type='debater'
+        )
+        if debater_qa['selected_letter'] is None:
+            print(f'debater_qa error: {debater_qa}')
+        # Format output once (for file)
+        debater_qa_output = f"Selected: {debater_qa['selected_letter']} - {debater_qa['selected_answer']}\n"
+        debater_qa_output += f"Result: {'CORRECT' if debater_qa['is_correct'] else 'INCORRECT'}\n"
+        debater_qa_output += f"Confidence: {debater_qa.get('confidence')}%\n"
+        if debater_qa.get('reasoning'):
+            debater_qa_output += f"Reasoning: {debater_qa['reasoning']}\n"
+        # debater_qa_output += f"\nFull Response:\n{debater_qa['raw_response']}"
 
-    # Print concise version to console (first 3 lines only)
-    # print("\n" + "\n".join(debater_qa_output.split("\n")[:3]))
-    print(debater_qa_output)
+        # Print concise version to console (first 3 lines only)
+        # print("\n" + "\n".join(debater_qa_output.split("\n")[:3]))
+        print(debater_qa_output)
+        
+        # Write debater QA to file immediately
+        append_debater_qa_to_file(text_file, question_data, debater_qa_output)
 
-    # Test judge direct QA
-    print("\n" + "="*70)
-    print("2. JUDGE MODEL DIRECT QA")
-    print("="*70)
-    judge_qa = test_model_direct_qa(
-        question_data['question'],
-        question_data['debater_a_answer'],
-        question_data['debater_b_answer'],
-        question_data['correct_answer'],
-        model_type='judge'
-    )
-    # Format output once (for file)
-    judge_qa_output = f"Selected: {judge_qa['selected_letter']} - {judge_qa['selected_answer']}\n"
-    judge_qa_output += f"Result: {'CORRECT' if judge_qa['is_correct'] else 'INCORRECT'}\n"
-    judge_qa_output += f"Confidence: {judge_qa.get('confidence')}%\n"
-    if judge_qa.get('reasoning'):
-        judge_qa_output += f"Reasoning: {judge_qa['reasoning']}\n"
-    # judge_qa_output += f"\nFull Response:\n{judge_qa['raw_response']}"
+        # Test judge direct QA
+        print("\n" + "="*70)
+        print("2. JUDGE MODEL DIRECT QA")
+        print("="*70)
+        judge_qa = test_model_direct_qa(
+            question_data['question'],
+            question_data['debater_a_answer'],
+            question_data['debater_b_answer'],
+            question_data['correct_answer'],
+            model_type='judge'
+        )
+        # Format output once (for file)
+        judge_qa_output = f"Selected: {judge_qa['selected_letter']} - {judge_qa['selected_answer']}\n"
+        judge_qa_output += f"Result: {'CORRECT' if judge_qa['is_correct'] else 'INCORRECT'}\n"
+        judge_qa_output += f"Confidence: {judge_qa.get('confidence')}%\n"
+        if judge_qa.get('reasoning'):
+            judge_qa_output += f"Reasoning: {judge_qa['reasoning']}\n"
+        # judge_qa_output += f"\nFull Response:\n{judge_qa['raw_response']}"
 
-    # Print concise version to console (first 3 lines only)
-    # print("\n" + "\n".join(judge_qa_output.split("\n")[:3]))
-    print(judge_qa_output)
+        # Print concise version to console (first 3 lines only)
+        # print("\n" + "\n".join(judge_qa_output.split("\n")[:3]))
+        print(judge_qa_output)
+        
+        # Write judge QA to file immediately
+        append_judge_qa_to_file(text_file, question_data, judge_qa_output)
 
-    # Run interactive debate
-    print("\n3. Running LLM-judged debate (INTERACTIVE)...")
-    debate_interactive = LLMJudgeDebate(
-        question_data['question'],
-        question_data['debater_a_answer'],
-        question_data['debater_b_answer'],
-        max_turns=args.max_turns,
-        verbose=not args.quiet,
-        interactive=True
-    )
-    debate_interactive.run_debate()
+        # Run interactive debate
+        print("\n3. Running LLM-judged debate (INTERACTIVE)...")
+        debate_interactive = LLMJudgeDebate(
+            question_data['question'],
+            question_data['debater_a_answer'],
+            question_data['debater_b_answer'],
+            max_turns=args.max_turns,
+            verbose=not args.quiet,
+            interactive=True
+        )
+        debate_interactive.run_debate()
+        
+        # Write interactive debate to file immediately
+        append_interactive_debate_to_file(text_file, debate_interactive)
 
-    # Get interactive verdict
-    print("\n" + "="*70)
-    print("4. FINAL VERDICT (INTERACTIVE)")
-    print("="*70)
-    verdict_interactive = get_final_verdict(debate_interactive)
+        # Get interactive verdict
+        print("\n" + "="*70)
+        print("4. FINAL VERDICT (INTERACTIVE)")
+        print("="*70)
+        verdict_interactive = get_final_verdict(debate_interactive)
 
-    winner_answer_interactive = debate_interactive.debater_a_answer if verdict_interactive['winner'] == 'A' else debate_interactive.debater_b_answer
-    is_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if verdict_interactive['winner'] else None
-    print(f"\nWinner: Debater {verdict_interactive['winner']}")
-    print(f"Selected Answer: {winner_answer_interactive}")
-    print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
+        winner_answer_interactive = debate_interactive.debater_a_answer if verdict_interactive['winner'] == 'A' else debate_interactive.debater_b_answer
+        is_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if verdict_interactive['winner'] else None
+        print(f"\nWinner: Debater {verdict_interactive['winner']}")
+        print(f"Selected Answer: {winner_answer_interactive}")
+        print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
+        
+        # Write interactive verdict to file immediately
+        append_interactive_verdict_to_file(text_file, verdict_interactive, debate_interactive, question_data)
 
-    # Run non-interactive debate
-    print("\n5. Running LLM-judged debate (NON-INTERACTIVE)...")
-    debate_non_interactive = LLMJudgeDebate(
-        question_data['question'],
-        question_data['debater_a_answer'],
-        question_data['debater_b_answer'],
-        max_turns=args.max_turns,
-        verbose=not args.quiet,
-        interactive=False
-    )
-    debate_non_interactive.run_debate()
+        # Run non-interactive debate
+        print("\n5. Running LLM-judged debate (NON-INTERACTIVE)...")
+        debate_non_interactive = LLMJudgeDebate(
+            question_data['question'],
+            question_data['debater_a_answer'],
+            question_data['debater_b_answer'],
+            max_turns=args.max_turns,
+            verbose=not args.quiet,
+            interactive=False
+        )
+        debate_non_interactive.run_debate()
+        
+        # Write non-interactive debate to file immediately
+        append_non_interactive_debate_to_file(text_file, debate_non_interactive)
 
-    # Get non-interactive verdict
-    print("\n" + "="*70)
-    print("6. FINAL VERDICT (NON-INTERACTIVE)")
-    print("="*70)
-    verdict_non_interactive = get_final_verdict(debate_non_interactive)
+        # Get non-interactive verdict
+        print("\n" + "="*70)
+        print("6. FINAL VERDICT (NON-INTERACTIVE)")
+        print("="*70)
+        verdict_non_interactive = get_final_verdict(debate_non_interactive)
 
-    winner_answer_non_interactive = debate_non_interactive.debater_a_answer if verdict_non_interactive['winner'] == 'A' else debate_non_interactive.debater_b_answer
-    is_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if verdict_non_interactive['winner'] else None
-    print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
-    print(f"Selected Answer: {winner_answer_non_interactive}")
-    print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
+        winner_answer_non_interactive = debate_non_interactive.debater_a_answer if verdict_non_interactive['winner'] == 'A' else debate_non_interactive.debater_b_answer
+        is_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if verdict_non_interactive['winner'] else None
+        print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
+        print(f"Selected Answer: {winner_answer_non_interactive}")
+        print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
+        
+        # Write non-interactive verdict to file immediately
+        append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, debate_non_interactive, question_data)
 
-    # Create summary
-    summary = "="*70 + "\n"
-    summary += "SUMMARY\n"
-    summary += "="*70 + "\n"
-    summary += f"Correct Answer: {question_data['correct_answer']}\n"
-    summary += f"Debater A position: {question_data['debater_a_position']}\n"
-    summary += f"Debater B position: {question_data['debater_b_position']}\n\n"
-    summary += f"Debater Direct QA: {'✓ CORRECT' if debater_qa['is_correct'] else '✗ INCORRECT'} (Confidence: {debater_qa.get('confidence')}%)\n"
-    summary += f"Judge Direct QA: {'✓ CORRECT' if judge_qa['is_correct'] else '✗ INCORRECT'} (Confidence: {judge_qa.get('confidence')}%)\n"
-    summary += f"Judge After Interactive Debate: {'✓ CORRECT' if is_correct_interactive else '✗ INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)\n"
-    summary += f"Judge After Non-Interactive Debate: {'✓ CORRECT' if is_correct_non_interactive else '✗ INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)\n"
+        # Create summary
+        summary = "="*70 + "\n"
+        summary += "SUMMARY\n"
+        summary += "="*70 + "\n"
+        summary += f"Correct Answer: {question_data['correct_answer']}\n"
+        summary += f"Debater A position: {question_data['debater_a_position']}\n"
+        summary += f"Debater B position: {question_data['debater_b_position']}\n\n"
+        summary += f"Debater Direct QA: {'✓ CORRECT' if debater_qa['is_correct'] else '✗ INCORRECT'} (Confidence: {debater_qa.get('confidence')}%)\n"
+        summary += f"Judge Direct QA: {'✓ CORRECT' if judge_qa['is_correct'] else '✗ INCORRECT'} (Confidence: {judge_qa.get('confidence')}%)\n"
+        summary += f"Judge After Interactive Debate: {'✓ CORRECT' if is_correct_interactive else '✗ INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)\n"
+        summary += f"Judge After Non-Interactive Debate: {'✓ CORRECT' if is_correct_non_interactive else '✗ INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)\n"
 
-    print(f"\n{summary}")
+        print(f"\n{summary}")
+        
+        # Write summary to file immediately
+        append_summary_to_file(text_file, summary)
 
-    # Save results
-    print("7. Saving results...")
-    csv_file, text_file = save_results(question_data, debater_qa, judge_qa, 
-                                       debate_interactive, verdict_interactive, 
-                                       debate_non_interactive, verdict_non_interactive,
-                                       args.output_dir, debater_qa_output, judge_qa_output, summary, 
-                                       run_id=args.run_id, csv_filename=args.csv_filename)
-    print(f"   Run ID: {args.run_id}")
-    print(f"   CSV: {csv_file}")
-    print(f"   Details: {text_file}")
+        # Save results to CSV
+        print("7. Saving CSV results...")
+        csv_file = save_results_to_csv(question_data, debater_qa, judge_qa, 
+                                        debate_interactive, verdict_interactive, 
+                                        debate_non_interactive, verdict_non_interactive,
+                                        args.output_dir, args.run_id, 
+                                        csv_filename=args.csv_filename)
+        print(f"   Run ID: {args.run_id}")
+        print(f"   CSV: {csv_file}")
+        print(f"   Details: {text_file}")
 
-    print("\nDone!")
+        print("\nDone!")
+        
+    except Exception as e:
+        # Log error to detail file
+        error_info = f"Error occurred at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+        error_info += f"Exception type: {type(e).__name__}\n"
+        error_info += f"Exception message: {str(e)}\n\n"
+        error_info += "Traceback:\n"
+        error_info += traceback.format_exc()
+        
+        print(f"\n{'='*70}")
+        print("ERROR OCCURRED")
+        print(f"{'='*70}")
+        print(error_info)
+        
+        # Write error to detail file
+        try:
+            append_error_to_file(text_file, error_info)
+            print(f"\nError logged to: {text_file}")
+        except Exception as write_error:
+            print(f"Failed to write error to file: {write_error}")
+        
+        # Re-raise the exception to ensure non-zero exit code
+        raise
 
 
 if __name__ == '__main__':
