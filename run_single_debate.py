@@ -429,6 +429,7 @@ What is your next action?"""
 
     def parse_action(self, action):
         """Parse the judge's action."""
+        raw_action = action
         action = action.strip()
 
         # Strip quotes
@@ -446,12 +447,14 @@ What is your next action?"""
         else:
             if self.verbose:
                 print(f"[Warning: Could not parse action '{action}', defaulting to 'next']")
-            return {'type': 'next'}
+            return {'type': 'parse_error', 'raw': raw_action}
 
-    def add_judge_input(self, comment, addressed_to):
-        """Add judge's question to history."""
-        self.history += f"\n[JUDGE to Debater {addressed_to}]: {comment}\n"
-        # Note: Judge's question is already displayed in execute_action, no need to print again here
+    def add_to_history(self, speaker, text):
+        """Add formatted entry to history with separator."""
+        separator = "-" * 30
+        if self.history:
+            self.history += f"{separator}\n"
+        self.history += f"[{speaker}] {text}\n"
 
     def next_turn(self, debater=None):
         """Run the next debate turn."""
@@ -477,7 +480,7 @@ What is your next action?"""
             if self.verbose:
                 print(argument)
 
-            self.history += f"\nDebater {self.current_turn}: {argument}\n"
+            self.add_to_history(f"Debater {self.current_turn}", argument)
             self.last_speaker = self.current_turn
             self.turn_count += 1
 
@@ -497,16 +500,25 @@ What is your next action?"""
                 print(f"JUDGE: end")
             elif action['type'] == 'question':
                 print(f"JUDGE: {action['debater']}: {action['comment']}")
+            elif action['type'] == 'parse_error':
+                print(f"JUDGE: [Parse error: defaulting to 'next'] Raw: {action.get('raw', '')}")
             print('─'*70)
 
+        # Add judge action to history
         if action['type'] == 'next':
+            self.add_to_history("Judge", "next")
             self.next_turn()
         elif action['type'] == 'end':
+            self.add_to_history("Judge", "end")
             return False  # Signal to stop
         elif action['type'] == 'question':
-            if action['comment']:
-                self.add_judge_input(action['comment'], action['debater'])
+            judge_text = f"{action['debater']}: {action['comment']}" if action['comment'] else action['debater']
+            self.add_to_history("Judge", judge_text)
             self.next_turn(debater=action['debater'])
+        elif action['type'] == 'parse_error':
+            # Log parse error in history and continue with 'next'
+            self.add_to_history("Judge", f"[Parse error: defaulting to 'next'] Raw: {action.get('raw', '')}")
+            self.next_turn()
 
         return True  # Continue
 
@@ -765,7 +777,7 @@ def append_interactive_verdict_to_file(text_file, verdict_interactive, debate_in
         f.write(f"Confidence: {verdict_interactive.get('confidence')}%\n")
         if verdict_interactive.get('reasoning'):
             f.write(f"\nReasoning:\n{verdict_interactive['reasoning']}\n")
-        f.write(f"\nFull Response:\n{verdict_interactive['raw_response']}\n\n")
+        # f.write(f"\nFull Response:\n{verdict_interactive['raw_response']}\n\n")
 
 
 def append_non_interactive_debate_to_file(text_file, debate_non_interactive):
@@ -815,7 +827,7 @@ def append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, d
         f.write(f"Confidence: {verdict_non_interactive.get('confidence')}%\n")
         if verdict_non_interactive.get('reasoning'):
             f.write(f"\nReasoning:\n{verdict_non_interactive['reasoning']}\n")
-        f.write(f"\nFull Response:\n{verdict_non_interactive['raw_response']}\n\n")
+        # f.write(f"\nFull Response:\n{verdict_non_interactive['raw_response']}\n\n")
 
 
 def append_summary_to_file(text_file, summary):
