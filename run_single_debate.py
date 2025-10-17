@@ -34,7 +34,9 @@ from config import (
     DIRECT_QA_TEMPERATURE, JUDGE_DECISION_TEMPERATURE, FINAL_VERDICT_TEMPERATURE,
     MAX_RETRIES, RETRY_BASE_WAIT,
     MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT,
-    USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE
+    USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE,
+    DEBATE_MODE,
+    DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
 )
 import baseline_cache
 
@@ -123,7 +125,7 @@ def load_gpqa_question(random_seed=None):
     if random_seed is not None:
         random.seed(random_seed)
 
-    dataset = load_dataset("Idavidrein/gpqa", "gpqa_diamond", split="train")
+    dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
     random_idx = random.randint(0, len(dataset) - 1)
     question_data = dataset[random_idx]
 
@@ -825,29 +827,15 @@ def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive,
     
     Note: The detailed text file should be written incrementally during the debate.
     This function only handles the CSV summary.
+    
+    Args:
+        debate_interactive, verdict_interactive: Can be None if interactive mode not run
+        debate_non_interactive, verdict_non_interactive: Can be None if non-interactive mode not run
     """
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     question_idx = question_data['question_idx']
 
-    # Prepare CSV row with both interactive and non-interactive results
-    # Interactive results
-    winner_answer_interactive = None
-    if verdict_interactive['winner'] == 'A':
-        winner_answer_interactive = debate_interactive.debater_a_answer
-    elif verdict_interactive['winner'] == 'B':
-        winner_answer_interactive = debate_interactive.debater_b_answer
-    
-    judge_after_debate_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if winner_answer_interactive else None
-
-    # Non-interactive results
-    winner_answer_non_interactive = None
-    if verdict_non_interactive['winner'] == 'A':
-        winner_answer_non_interactive = debate_non_interactive.debater_a_answer
-    elif verdict_non_interactive['winner'] == 'B':
-        winner_answer_non_interactive = debate_non_interactive.debater_b_answer
-    
-    judge_after_debate_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if winner_answer_non_interactive else None
-
+    # Base CSV row with shared columns
     csv_row = {
         'run_id': run_id,
         'timestamp': timestamp,
@@ -858,15 +846,55 @@ def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive,
         'judge_direct_correct': judge_qa['is_correct'],
         'judge_confidence': judge_qa.get('confidence'),
         'judge_cached': judge_qa.get('cached', False),
-        'interactive_debate_turns': debate_interactive.turn_count,
-        'interactive_judge_verdict_winner': verdict_interactive.get('winner'),
-        'interactive_judge_after_debate_correct': judge_after_debate_correct_interactive,
-        'interactive_judge_after_debate_confidence': verdict_interactive.get('confidence'),
-        'non_interactive_debate_turns': debate_non_interactive.turn_count,
-        'non_interactive_judge_verdict_winner': verdict_non_interactive.get('winner'),
-        'non_interactive_judge_after_debate_correct': judge_after_debate_correct_non_interactive,
-        'non_interactive_judge_after_debate_confidence': verdict_non_interactive.get('confidence'),
     }
+
+    # Add interactive results if available
+    if debate_interactive is not None and verdict_interactive is not None:
+        winner_answer_interactive = None
+        if verdict_interactive['winner'] == 'A':
+            winner_answer_interactive = debate_interactive.debater_a_answer
+        elif verdict_interactive['winner'] == 'B':
+            winner_answer_interactive = debate_interactive.debater_b_answer
+        
+        judge_after_debate_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if winner_answer_interactive else None
+        
+        csv_row.update({
+            'interactive_debate_turns': debate_interactive.turn_count,
+            'interactive_judge_verdict_winner': verdict_interactive.get('winner'),
+            'interactive_judge_after_debate_correct': judge_after_debate_correct_interactive,
+            'interactive_judge_after_debate_confidence': verdict_interactive.get('confidence'),
+        })
+    else:
+        csv_row.update({
+            'interactive_debate_turns': None,
+            'interactive_judge_verdict_winner': None,
+            'interactive_judge_after_debate_correct': None,
+            'interactive_judge_after_debate_confidence': None,
+        })
+
+    # Add non-interactive results if available
+    if debate_non_interactive is not None and verdict_non_interactive is not None:
+        winner_answer_non_interactive = None
+        if verdict_non_interactive['winner'] == 'A':
+            winner_answer_non_interactive = debate_non_interactive.debater_a_answer
+        elif verdict_non_interactive['winner'] == 'B':
+            winner_answer_non_interactive = debate_non_interactive.debater_b_answer
+        
+        judge_after_debate_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if winner_answer_non_interactive else None
+        
+        csv_row.update({
+            'non_interactive_debate_turns': debate_non_interactive.turn_count,
+            'non_interactive_judge_verdict_winner': verdict_non_interactive.get('winner'),
+            'non_interactive_judge_after_debate_correct': judge_after_debate_correct_non_interactive,
+            'non_interactive_judge_after_debate_confidence': verdict_non_interactive.get('confidence'),
+        })
+    else:
+        csv_row.update({
+            'non_interactive_debate_turns': None,
+            'non_interactive_judge_verdict_winner': None,
+            'non_interactive_judge_after_debate_correct': None,
+            'non_interactive_judge_after_debate_confidence': None,
+        })
 
     # Save to CSV (append mode)
     if csv_filename is None:
@@ -885,7 +913,7 @@ def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive,
 
 def main():
     parser = argparse.ArgumentParser(description='Run a single debate experiment')
-    parser.add_argument('--output-dir', type=str, default='./debate_results',
+    parser.add_argument('--output-dir', type=str, default='./single_debate_runs',
                         help='Output directory for results')
     parser.add_argument('--seed', type=int, default=None,
                         help='Random seed for reproducibility')
@@ -1031,65 +1059,85 @@ def main():
         # Write judge QA to file immediately
         append_judge_qa_to_file(text_file, question_data, judge_qa_output)
 
-        # Run interactive debate
-        print("\n3. Running LLM-judged debate (INTERACTIVE)...")
-        debate_interactive = LLMJudgeDebate(
-            question_data['question'],
-            question_data['debater_a_answer'],
-            question_data['debater_b_answer'],
-            max_turns=args.max_turns,
-            verbose=not args.quiet,
-            interactive=True
-        )
-        debate_interactive.run_debate()
+        # Determine which debate mode(s) to run based on config
+        run_interactive = DEBATE_MODE in ['interactive', 'both']
+        run_non_interactive = DEBATE_MODE in ['non_interactive', 'both']
         
-        # Write interactive debate to file immediately
-        append_interactive_debate_to_file(text_file, debate_interactive)
-
-        # Get interactive verdict
-        print("\n" + "="*70)
-        print("4. FINAL VERDICT (INTERACTIVE)")
-        print("="*70)
-        verdict_interactive = get_final_verdict(debate_interactive)
-
-        winner_answer_interactive = debate_interactive.debater_a_answer if verdict_interactive['winner'] == 'A' else debate_interactive.debater_b_answer
-        is_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if verdict_interactive['winner'] else None
-        print(f"\nWinner: Debater {verdict_interactive['winner']}")
-        print(f"Selected Answer: {winner_answer_interactive}")
-        print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
+        # Initialize variables
+        debate_interactive = None
+        verdict_interactive = None
+        is_correct_interactive = None
+        debate_non_interactive = None
+        verdict_non_interactive = None
+        is_correct_non_interactive = None
         
-        # Write interactive verdict to file immediately
-        append_interactive_verdict_to_file(text_file, verdict_interactive, debate_interactive, question_data)
-
-        # Run non-interactive debate
-        print("\n5. Running LLM-judged debate (NON-INTERACTIVE)...")
-        debate_non_interactive = LLMJudgeDebate(
-            question_data['question'],
-            question_data['debater_a_answer'],
-            question_data['debater_b_answer'],
-            max_turns=args.max_turns,
-            verbose=not args.quiet,
-            interactive=False
-        )
-        debate_non_interactive.run_debate()
+        step_num = 3  # Track step numbers for display
         
-        # Write non-interactive debate to file immediately
-        append_non_interactive_debate_to_file(text_file, debate_non_interactive)
+        # Run interactive debate if enabled
+        if run_interactive:
+            print(f"\n{step_num}. Running LLM-judged debate (INTERACTIVE)...")
+            debate_interactive = LLMJudgeDebate(
+                question_data['question'],
+                question_data['debater_a_answer'],
+                question_data['debater_b_answer'],
+                max_turns=args.max_turns,
+                verbose=not args.quiet,
+                interactive=True
+            )
+            debate_interactive.run_debate()
+            
+            # Write interactive debate to file immediately
+            append_interactive_debate_to_file(text_file, debate_interactive)
 
-        # Get non-interactive verdict
-        print("\n" + "="*70)
-        print("6. FINAL VERDICT (NON-INTERACTIVE)")
-        print("="*70)
-        verdict_non_interactive = get_final_verdict(debate_non_interactive)
+            # Get interactive verdict
+            print("\n" + "="*70)
+            print(f"{step_num+1}. FINAL VERDICT (INTERACTIVE)")
+            print("="*70)
+            verdict_interactive = get_final_verdict(debate_interactive)
 
-        winner_answer_non_interactive = debate_non_interactive.debater_a_answer if verdict_non_interactive['winner'] == 'A' else debate_non_interactive.debater_b_answer
-        is_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if verdict_non_interactive['winner'] else None
-        print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
-        print(f"Selected Answer: {winner_answer_non_interactive}")
-        print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
-        
-        # Write non-interactive verdict to file immediately
-        append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, debate_non_interactive, question_data)
+            winner_answer_interactive = debate_interactive.debater_a_answer if verdict_interactive['winner'] == 'A' else debate_interactive.debater_b_answer
+            is_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if verdict_interactive['winner'] else None
+            print(f"\nWinner: Debater {verdict_interactive['winner']}")
+            print(f"Selected Answer: {winner_answer_interactive}")
+            print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
+            
+            # Write interactive verdict to file immediately
+            append_interactive_verdict_to_file(text_file, verdict_interactive, debate_interactive, question_data)
+            
+            step_num += 2
+
+        # Run non-interactive debate if enabled
+        if run_non_interactive:
+            print(f"\n{step_num}. Running LLM-judged debate (NON-INTERACTIVE)...")
+            debate_non_interactive = LLMJudgeDebate(
+                question_data['question'],
+                question_data['debater_a_answer'],
+                question_data['debater_b_answer'],
+                max_turns=args.max_turns,
+                verbose=not args.quiet,
+                interactive=False
+            )
+            debate_non_interactive.run_debate()
+            
+            # Write non-interactive debate to file immediately
+            append_non_interactive_debate_to_file(text_file, debate_non_interactive)
+
+            # Get non-interactive verdict
+            print("\n" + "="*70)
+            print(f"{step_num+1}. FINAL VERDICT (NON-INTERACTIVE)")
+            print("="*70)
+            verdict_non_interactive = get_final_verdict(debate_non_interactive)
+
+            winner_answer_non_interactive = debate_non_interactive.debater_a_answer if verdict_non_interactive['winner'] == 'A' else debate_non_interactive.debater_b_answer
+            is_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if verdict_non_interactive['winner'] else None
+            print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
+            print(f"Selected Answer: {winner_answer_non_interactive}")
+            print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
+            
+            # Write non-interactive verdict to file immediately
+            append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, debate_non_interactive, question_data)
+            
+            step_num += 2
 
         # Create summary
         summary = "="*70 + "\n"
@@ -1100,8 +1148,11 @@ def main():
         summary += f"Debater B position: {question_data['debater_b_position']}\n\n"
         summary += f"Debater Direct QA: {'✓ CORRECT' if debater_qa['is_correct'] else '✗ INCORRECT'} (Confidence: {debater_qa.get('confidence')}%)\n"
         summary += f"Judge Direct QA: {'✓ CORRECT' if judge_qa['is_correct'] else '✗ INCORRECT'} (Confidence: {judge_qa.get('confidence')}%)\n"
-        summary += f"Judge After Interactive Debate: {'✓ CORRECT' if is_correct_interactive else '✗ INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)\n"
-        summary += f"Judge After Non-Interactive Debate: {'✓ CORRECT' if is_correct_non_interactive else '✗ INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)\n"
+        
+        if run_interactive:
+            summary += f"Judge After Interactive Debate: {'✓ CORRECT' if is_correct_interactive else '✗ INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)\n"
+        if run_non_interactive:
+            summary += f"Judge After Non-Interactive Debate: {'✓ CORRECT' if is_correct_non_interactive else '✗ INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)\n"
 
         print(f"\n{summary}")
         
@@ -1109,7 +1160,7 @@ def main():
         append_summary_to_file(text_file, summary)
 
         # Save results to CSV
-        print("7. Saving CSV results...")
+        print(f"{step_num}. Saving CSV results...")
         csv_file = save_results_to_csv(question_data, debater_qa, judge_qa, 
                                         debate_interactive, verdict_interactive, 
                                         debate_non_interactive, verdict_non_interactive,

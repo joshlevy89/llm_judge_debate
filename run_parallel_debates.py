@@ -88,11 +88,14 @@ def print_aggregate_stats(master_csv: str):
     if not rows:
         return
     
+    # Check which columns are available (to support flexible debate modes)
+    columns = rows[0].keys() if rows else []
+    has_interactive = 'interactive_judge_after_debate_correct' in columns
+    has_non_interactive = 'non_interactive_judge_after_debate_correct' in columns
+    
     total = len(rows)
     debater_correct = sum(1 for r in rows if r.get('debater_direct_correct') == 'True')
     judge_direct_correct = sum(1 for r in rows if r.get('judge_direct_correct') == 'True')
-    judge_after_interactive_correct = sum(1 for r in rows if r.get('interactive_judge_after_debate_correct') == 'True')
-    judge_after_non_interactive_correct = sum(1 for r in rows if r.get('non_interactive_judge_after_debate_correct') == 'True')
     
     print("\n" + "="*70)
     print("AGGREGATE STATISTICS")
@@ -100,8 +103,15 @@ def print_aggregate_stats(master_csv: str):
     print(f"Total debates: {total}")
     print(f"Debater direct QA accuracy: {debater_correct}/{total} ({100*debater_correct/total:.1f}%)")
     print(f"Judge direct QA accuracy: {judge_direct_correct}/{total} ({100*judge_direct_correct/total:.1f}%)")
-    print(f"Judge after interactive debate accuracy: {judge_after_interactive_correct}/{total} ({100*judge_after_interactive_correct/total:.1f}%)")
-    print(f"Judge after non-interactive debate accuracy: {judge_after_non_interactive_correct}/{total} ({100*judge_after_non_interactive_correct/total:.1f}%)")
+    
+    if has_interactive:
+        judge_after_interactive_correct = sum(1 for r in rows if r.get('interactive_judge_after_debate_correct') == 'True')
+        print(f"Judge after interactive debate accuracy: {judge_after_interactive_correct}/{total} ({100*judge_after_interactive_correct/total:.1f}%)")
+    
+    if has_non_interactive:
+        judge_after_non_interactive_correct = sum(1 for r in rows if r.get('non_interactive_judge_after_debate_correct') == 'True')
+        print(f"Judge after non-interactive debate accuracy: {judge_after_non_interactive_correct}/{total} ({100*judge_after_non_interactive_correct/total:.1f}%)")
+    
     print("="*70)
 
 
@@ -148,8 +158,8 @@ Examples:
                         help='Number of debates to run in parallel (default: 2)')
     parser.add_argument('--max-concurrent', type=int, default=None,
                         help='Maximum number of debates to run concurrently (default: all at once). Use this to avoid rate limits.')
-    parser.add_argument('--output-dir', type=str, default='./test_debate_results',
-                        help='Output directory for results (default: ./test_debate_results)')
+    parser.add_argument('--output-dir', type=str, default='./parallel_debate_runs',
+                        help='Output directory for results (default: ./parallel_debate_runs)')
     parser.add_argument('--master-csv', type=str, default=None,
                         help='Path to master CSV for aggregated results (default: auto-generated descriptive name)')
     parser.add_argument('--seed', type=int, default=None,

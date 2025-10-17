@@ -25,10 +25,22 @@ RETRY_BASE_WAIT = 2  # Base wait time in seconds for exponential backoff
 MAX_TURNS_DEFAULT = 20  # Default maximum number of debate turns
 DEBATER_WORD_LIMIT = 200  # Maximum words per debater response
 
+# Debate mode configuration
+DEBATE_MODE = 'non_interactive'  # Options: 'interactive', 'non_interactive', or 'both'
+# - 'interactive': Judge can ask clarifying questions to debaters
+# - 'non_interactive': Judge can only say 'next' or 'end'
+# - 'both': Run both modes for comparison (doubles execution time)
+
 # Baseline caching configuration
 USE_BASELINE_CACHE = True  # Check cache for existing direct QA results before running
 SAVE_TO_BASELINE_CACHE = True  # Save new direct QA results to cache
 BASELINE_CACHE_DIR = './baseline_cache'  # Directory to store baseline cache files
-# Cache key includes: model name, question_idx, temperature
-# This ensures cache is invalidated when models or questions change
+
+# Dataset configuration (for cache validation)
+DATASET_NAME = "Idavidrein/gpqa"
+DATASET_SUBSET = "gpqa_diamond"
+DATASET_SPLIT = "train"
+
+# Cache key includes: model name, question_idx, temperature, dataset info
+# This ensures cache is invalidated when models, datasets, or questions change
 

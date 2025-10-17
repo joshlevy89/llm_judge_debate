@@ -19,8 +19,9 @@ The baseline cache system stores direct QA results (before debates) to avoid re-
 Results are keyed by:
 1. **Model name** - Different models have separate cache files
 2. **Model type** - 'debater' or 'judge'
-3. **Question index** - Each question has its own cache entry
+3. **Question index** - Each question has its own cache entry (based on dataset index)
 4. **Temperature** - Ensures consistency with current settings
+5. **Dataset info** - Dataset name, subset, and split (validates cache is for correct dataset)
 
 ### Cache Behavior
 
@@ -114,6 +115,9 @@ The cache files are human-readable JSON. Example structure:
     "model_name": "gemini-2.5-flash",
     "model_type": "debater",
     "temperature": 0.0,
+    "dataset_name": "Idavidrein/gpqa",
+    "dataset_subset": "gpqa_diamond",
+    "dataset_split": "train",
     "created": "2025-10-17T10:00:00",
     "last_updated": "2025-10-17T11:30:00"
   },
@@ -169,16 +173,20 @@ SAVE_TO_BASELINE_CACHE = False  # Don't save to cache
 ### Cache Consistency
 
 The cache assumes:
-- Questions at the same index are the same across runs
+- Questions at the same index are the same across runs (within the same dataset)
 - Direct QA with temperature 0.0 is deterministic enough to cache
 - Model behavior is consistent for the same question
 
+**Question Index:** The cache keys are based on the actual index in the GPQA diamond dataset (`dataset[42]` always refers to the same question).
+
 ### Cache Invalidation
 
-Cache is automatically invalidated when:
-- Model name changes
-- Temperature changes
-- Question dataset changes (different question at same index)
+Cache is automatically invalidated (ignored) when:
+- **Model name changes** - Different models have separate cache files
+- **Temperature changes** - Cached results won't match current temperature
+- **Dataset changes** - If you change `DATASET_NAME`, `DATASET_SUBSET`, or `DATASET_SPLIT` in `config.py`, cache will be ignored
+
+When cache is invalidated, you'll see a warning message and fresh results will be generated.
 
 ### Performance
 
@@ -188,9 +196,10 @@ Cache is automatically invalidated when:
 
 ### Limitations
 
-- Cache doesn't track the actual question text (only index)
-- If you modify the dataset, you should clear the cache
+- Cache stores question index, not full question text (more compact, but relies on dataset stability)
+- If you manually modify the dataset source (rare), you should clear the cache
 - Cache doesn't sync across machines (local only)
+- Cache validation checks dataset name/subset/split but not dataset version (GPQA is stable, so this is typically fine)
 
 ## Best Practices
 

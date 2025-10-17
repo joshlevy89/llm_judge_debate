@@ -17,7 +17,10 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
 
-from config import BASELINE_CACHE_DIR, DEBATE_MODEL, JUDGE_MODEL, DIRECT_QA_TEMPERATURE
+from config import (
+    BASELINE_CACHE_DIR, DEBATE_MODEL, JUDGE_MODEL, DIRECT_QA_TEMPERATURE,
+    DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
+)
 
 
 def _get_cache_filename(model_name: str, model_type: str) -> str:
@@ -52,6 +55,9 @@ def _load_cache(cache_file: Path) -> Dict:
                 "model_name": None,
                 "model_type": None,
                 "temperature": DIRECT_QA_TEMPERATURE,
+                "dataset_name": DATASET_NAME,
+                "dataset_subset": DATASET_SUBSET,
+                "dataset_split": DATASET_SPLIT,
                 "created": datetime.now().isoformat(),
                 "last_updated": datetime.now().isoformat()
             },
@@ -68,6 +74,9 @@ def _load_cache(cache_file: Path) -> Dict:
                 "model_name": None,
                 "model_type": None,
                 "temperature": DIRECT_QA_TEMPERATURE,
+                "dataset_name": DATASET_NAME,
+                "dataset_subset": DATASET_SUBSET,
+                "dataset_split": DATASET_SPLIT,
                 "created": datetime.now().isoformat(),
                 "last_updated": datetime.now().isoformat()
             },
@@ -117,6 +126,16 @@ def get_cached_qa(question_idx: int, model_type: str) -> Optional[Dict]:
     # Load cache
     cache_data = _load_cache(cache_file)
     
+    # Validate dataset info matches
+    metadata = cache_data.get("metadata", {})
+    if metadata.get("dataset_name") != DATASET_NAME or \
+       metadata.get("dataset_subset") != DATASET_SUBSET or \
+       metadata.get("dataset_split") != DATASET_SPLIT:
+        print(f"Warning: Cache dataset mismatch. Expected {DATASET_NAME}/{DATASET_SUBSET}/{DATASET_SPLIT}, "
+              f"got {metadata.get('dataset_name')}/{metadata.get('dataset_subset')}/{metadata.get('dataset_split')}. "
+              f"Ignoring cache.")
+        return None
+    
     # Check if result exists for this question
     question_key = str(question_idx)
     if question_key in cache_data["results"]:
@@ -154,6 +173,9 @@ def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict) -> Non
     cache_data["metadata"]["model_name"] = model_name
     cache_data["metadata"]["model_type"] = model_type
     cache_data["metadata"]["temperature"] = DIRECT_QA_TEMPERATURE
+    cache_data["metadata"]["dataset_name"] = DATASET_NAME
+    cache_data["metadata"]["dataset_subset"] = DATASET_SUBSET
+    cache_data["metadata"]["dataset_split"] = DATASET_SPLIT
     
     # Prepare result to cache (exclude raw_response to save space)
     cached_result = {
@@ -221,6 +243,9 @@ def get_cache_stats(model_type: str) -> Dict:
         "model_name": cache_data["metadata"].get("model_name"),
         "model_type": cache_data["metadata"].get("model_type"),
         "temperature": cache_data["metadata"].get("temperature"),
+        "dataset_name": cache_data["metadata"].get("dataset_name"),
+        "dataset_subset": cache_data["metadata"].get("dataset_subset"),
+        "dataset_split": cache_data["metadata"].get("dataset_split"),
         "created": cache_data["metadata"].get("created"),
         "last_updated": cache_data["metadata"].get("last_updated"),
         "num_cached_results": len(cache_data["results"]),
