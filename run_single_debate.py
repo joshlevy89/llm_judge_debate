@@ -33,8 +33,10 @@ from config import (
     DEBATE_MODEL, JUDGE_MODEL,
     DIRECT_QA_TEMPERATURE, JUDGE_DECISION_TEMPERATURE, FINAL_VERDICT_TEMPERATURE,
     MAX_RETRIES, RETRY_BASE_WAIT,
-    MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT
+    MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT,
+    USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE
 )
+import baseline_cache
 
 # Load environment variables
 load_dotenv()
@@ -852,8 +854,10 @@ def save_results_to_csv(question_data, debater_qa, judge_qa, debate_interactive,
         'question_idx': question_idx,
         'debater_direct_correct': debater_qa['is_correct'],
         'debater_confidence': debater_qa.get('confidence'),
+        'debater_cached': debater_qa.get('cached', False),
         'judge_direct_correct': judge_qa['is_correct'],
         'judge_confidence': judge_qa.get('confidence'),
+        'judge_cached': judge_qa.get('cached', False),
         'interactive_debate_turns': debate_interactive.turn_count,
         'interactive_judge_verdict_winner': verdict_interactive.get('winner'),
         'interactive_judge_after_debate_correct': judge_after_debate_correct_interactive,
@@ -932,17 +936,40 @@ def main():
         print("\n" + "="*70)
         print("1. DEBATER MODEL DIRECT QA")
         print("="*70)
-        debater_qa = test_model_direct_qa(
-            question_data['question'],
-            question_data['debater_a_answer'],
-            question_data['debater_b_answer'],
-            question_data['correct_answer'],
-            model_type='debater'
-        )
+        
+        # Check cache first
+        cached_debater_qa = None
+        if USE_BASELINE_CACHE:
+            cached_debater_qa = baseline_cache.get_cached_qa(question_idx, 'debater')
+        
+        if cached_debater_qa:
+            print("[Using cached result]")
+            debater_qa = cached_debater_qa.copy()
+            debater_qa['cached'] = True
+            # Add raw_response placeholder if needed for compatibility
+            if 'raw_response' not in debater_qa:
+                debater_qa['raw_response'] = '[Cached result]'
+        else:
+            # Run fresh QA
+            debater_qa = test_model_direct_qa(
+                question_data['question'],
+                question_data['debater_a_answer'],
+                question_data['debater_b_answer'],
+                question_data['correct_answer'],
+                model_type='debater'
+            )
+            debater_qa['cached'] = False
+            
+            # Save to cache
+            if SAVE_TO_BASELINE_CACHE:
+                baseline_cache.save_qa_to_cache(question_idx, 'debater', debater_qa)
+        
         if debater_qa['selected_letter'] is None:
             print(f'debater_qa error: {debater_qa}')
+        
         # Format output once (for file)
-        debater_qa_output = f"Selected: {debater_qa['selected_letter']} - {debater_qa['selected_answer']}\n"
+        cache_status = " [CACHED]" if debater_qa.get('cached') else ""
+        debater_qa_output = f"Selected: {debater_qa['selected_letter']} - {debater_qa['selected_answer']}{cache_status}\n"
         debater_qa_output += f"Result: {'CORRECT' if debater_qa['is_correct'] else 'INCORRECT'}\n"
         debater_qa_output += f"Confidence: {debater_qa.get('confidence')}%\n"
         if debater_qa.get('reasoning'):
@@ -960,15 +987,37 @@ def main():
         print("\n" + "="*70)
         print("2. JUDGE MODEL DIRECT QA")
         print("="*70)
-        judge_qa = test_model_direct_qa(
-            question_data['question'],
-            question_data['debater_a_answer'],
-            question_data['debater_b_answer'],
-            question_data['correct_answer'],
-            model_type='judge'
-        )
+        
+        # Check cache first
+        cached_judge_qa = None
+        if USE_BASELINE_CACHE:
+            cached_judge_qa = baseline_cache.get_cached_qa(question_idx, 'judge')
+        
+        if cached_judge_qa:
+            print("[Using cached result]")
+            judge_qa = cached_judge_qa.copy()
+            judge_qa['cached'] = True
+            # Add raw_response placeholder if needed for compatibility
+            if 'raw_response' not in judge_qa:
+                judge_qa['raw_response'] = '[Cached result]'
+        else:
+            # Run fresh QA
+            judge_qa = test_model_direct_qa(
+                question_data['question'],
+                question_data['debater_a_answer'],
+                question_data['debater_b_answer'],
+                question_data['correct_answer'],
+                model_type='judge'
+            )
+            judge_qa['cached'] = False
+            
+            # Save to cache
+            if SAVE_TO_BASELINE_CACHE:
+                baseline_cache.save_qa_to_cache(question_idx, 'judge', judge_qa)
+        
         # Format output once (for file)
-        judge_qa_output = f"Selected: {judge_qa['selected_letter']} - {judge_qa['selected_answer']}\n"
+        cache_status = " [CACHED]" if judge_qa.get('cached') else ""
+        judge_qa_output = f"Selected: {judge_qa['selected_letter']} - {judge_qa['selected_answer']}{cache_status}\n"
         judge_qa_output += f"Result: {'CORRECT' if judge_qa['is_correct'] else 'INCORRECT'}\n"
         judge_qa_output += f"Confidence: {judge_qa.get('confidence')}%\n"
         if judge_qa.get('reasoning'):
