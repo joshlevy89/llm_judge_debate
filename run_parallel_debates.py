@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import List, Dict
 import glob
 
-from config import MAX_TURNS_DEFAULT
+from config import MAX_TURNS_DEFAULT, SEED as DEFAULT_SEED, MASTER_SEED as DEFAULT_MASTER_SEED
 
 
 def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: str, seed: int = None, 
@@ -62,13 +62,13 @@ def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: s
     if quiet:
         cmd.append('--quiet')
     
-    # Launch process with output redirected to devnull (we save everything in detail.txt files)
+    # Launch process with output redirected to devnull (we save everything in log files)
     print(f"[run_id: {run_id}] Starting...")
     
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,  # Errors are logged to detail files
         text=True,
         bufsize=1  # Line buffered
     )
@@ -168,8 +168,8 @@ Examples:
                         help='Output directory for results (default: ./parallel_debate_runs)')
     parser.add_argument('--master-jsonl', type=str, default=None,
                         help='Path to master JSONL for aggregated results (default: auto-generated descriptive name)')
-    parser.add_argument('--seed', type=int, default=None,
-                        help='Random seed for reproducibility (generates deterministic seeds for each debate)')
+    parser.add_argument('--seed', type=int, default=DEFAULT_SEED,
+                        help=f'Random seed for reproducibility (generates deterministic seeds for each debate, default: {DEFAULT_SEED or "random"})')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help=f'Maximum number of debate turns (default: {MAX_TURNS_DEFAULT})')
     parser.add_argument('--quiet', action='store_true',
@@ -319,7 +319,7 @@ Examples:
                     if retcode == 0:
                         print(f"[run_id: {run_id}] ✓ Completed successfully")
                     else:
-                        print(f"[run_id: {run_id}] ✗ Failed with exit code {retcode}")
+                        print(f"[run_id: {run_id}] ✗ Failed with exit code {retcode}. Check log_{run_id}.txt for details.")
         
         if not all(completed):
             time.sleep(1)

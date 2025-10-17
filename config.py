@@ -41,6 +41,9 @@ DATASET_NAME = "Idavidrein/gpqa"
 DATASET_SUBSET = "gpqa_diamond"
 DATASET_SPLIT = "train"
 
+# Random seed configuration
+SEED = 1  # Random seed for reproducibility (None = random)
+MASTER_SEED = 42  # Master seed for parallel runs (None = random)
+
 # Cache key includes: model name, question_idx, temperature, dataset info
 # This ensures cache is invalidated when models, datasets, or questions change
-

@@ -37,7 +37,8 @@ from config import (
     MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT,
     USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE, BASELINE_CACHE_DIR,
     DEBATE_MODE,
-    DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
+    DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT,
+    SEED, MASTER_SEED
 )
 import baseline_cache
 
@@ -63,62 +64,86 @@ def get_provider(model_name):
         raise ValueError(f"Unknown model provider for model: {model_name}")
 
 
-def llm_generate(model_name, prompt, temperature=None, system_prompt=None):
+def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_retries=MAX_RETRIES):
     """
-    Unified LLM generation wrapper for all providers.
+    Unified LLM generation wrapper for all providers with automatic retry logic.
     
     Args:
         model_name: Name of the model to use
         prompt: User prompt text
         temperature: Optional temperature (uses default if None)
         system_prompt: Optional system prompt (for OpenAI/Anthropic)
+        max_retries: Maximum number of retry attempts for transient errors
     
     Returns:
         Generated text response
     """
     provider = get_provider(model_name)
     
-    if provider == 'openai':
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
+    for attempt in range(max_retries):
+        try:
+            if provider == 'openai':
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                kwargs = {"model": model_name, "messages": messages}
+                if temperature is not None:
+                    kwargs["temperature"] = temperature
+                    
+                response = openai_client.chat.completions.create(**kwargs)
+                return response.choices[0].message.content.strip()
+            
+            elif provider == 'anthropic':
+                kwargs = {"model": model_name, "max_tokens": 4096, "messages": [{"role": "user", "content": prompt}]}
+                if temperature is not None:
+                    kwargs["temperature"] = temperature
+                if system_prompt:
+                    kwargs["system"] = system_prompt
+                    
+                response = anthropic_client.messages.create(**kwargs)
+                return response.content[0].text.strip()
+            
+            elif provider == 'google':
+                config_kwargs = {}
+                if temperature is not None:
+                    config_kwargs["temperature"] = temperature
+                
+                full_prompt = prompt
+                if system_prompt:
+                    full_prompt = f"{system_prompt}\n\n{prompt}"
+                    
+                response = genai_client.models.generate_content(
+                    model=model_name,
+                    contents=full_prompt,
+                    config=types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
+                )
+                return response.text.strip()
+            
+            else:
+                raise ValueError(f"Unknown provider: {provider}")
         
-        kwargs = {"model": model_name, "messages": messages}
-        if temperature is not None:
-            kwargs["temperature"] = temperature
+        except Exception as e:
+            error_msg = str(e)
+            is_retryable = (
+                '503' in error_msg or
+                '429' in error_msg or
+                'overloaded' in error_msg.lower() or
+                'rate limit' in error_msg.lower() or
+                'quota' in error_msg.lower() or
+                'RESOURCE_EXHAUSTED' in error_msg or
+                'UNAVAILABLE' in error_msg
+            )
             
-        response = openai_client.chat.completions.create(**kwargs)
-        return response.choices[0].message.content.strip()
-    
-    elif provider == 'anthropic':
-        kwargs = {"model": model_name, "max_tokens": 4096, "messages": [{"role": "user", "content": prompt}]}
-        if temperature is not None:
-            kwargs["temperature"] = temperature
-        if system_prompt:
-            kwargs["system"] = system_prompt
-            
-        response = anthropic_client.messages.create(**kwargs)
-        return response.content[0].text.strip()
-    
-    elif provider == 'google':
-        config_kwargs = {}
-        if temperature is not None:
-            config_kwargs["temperature"] = temperature
-        
-        full_prompt = prompt
-        if system_prompt:
-            full_prompt = f"{system_prompt}\n\n{prompt}"
-            
-        response = genai_client.models.generate_content(
-            model=model_name,
-            contents=full_prompt,
-            config=types.GenerateContentConfig(**config_kwargs) if config_kwargs else None
-        )
-        return response.text.strip()
-    
-    else:
-        raise ValueError(f"Unknown provider: {provider}")
+            if is_retryable and attempt < max_retries - 1:
+                wait_time = RETRY_BASE_WAIT ** (attempt + 1)
+                print(f"[LLM retry {attempt+1}/{max_retries-1}] Waiting {wait_time}s due to: {error_msg[:100]}...")
+                time.sleep(wait_time)
+                continue
+            else:
+                # Either non-retryable error or exhausted retries
+                raise
 
 
 def load_gpqa_question(random_seed=None):
@@ -311,8 +336,8 @@ If your output is longer than that, you will automatically lose the debate.
 """
 
 
-def debate_round(question, debater_a_answer, debater_b_answer, history, current_debater, max_retries=MAX_RETRIES):
-    """Run a single debate round with retry logic."""
+def debate_round(question, debater_a_answer, debater_b_answer, history, current_debater):
+    """Run a single debate round (retries handled by llm_generate)."""
     opponent = 'B' if current_debater == 'A' else 'A'
     my_answer = debater_a_answer if current_debater == 'A' else debater_b_answer
     opponent_answer = debater_b_answer if current_debater == 'A' else debater_a_answer
@@ -322,28 +347,7 @@ def debate_round(question, debater_a_answer, debater_b_answer, history, current_
     if history:
         prompt += f"\n\nDebate so far:\n{history}"
 
-    for attempt in range(max_retries):
-        try:
-            return llm_generate(DEBATE_MODEL, prompt)
-
-        except Exception as e:
-            error_msg = str(e)
-            is_retryable = (
-                '503' in error_msg or
-                'overloaded' in error_msg.lower() or
-                'rate limit' in error_msg.lower() or
-                'quota' in error_msg.lower() or
-                'RESOURCE_EXHAUSTED' in error_msg or
-                'UNAVAILABLE' in error_msg
-            )
-
-            if is_retryable and attempt < max_retries - 1:
-                wait_time = RETRY_BASE_WAIT ** (attempt + 1)
-                print(f"[Retrying in {wait_time}s due to: {error_msg[:100]}...]")
-                time.sleep(wait_time)
-                continue
-            else:
-                raise
+    return llm_generate(DEBATE_MODEL, prompt)
 
 
 def create_judge_prompt():
@@ -587,6 +591,11 @@ Reasoning: [brief explanation of your decision]"""
         if reasoning_match:
             reasoning = reasoning_match.group(1).strip()
 
+        # Log parsing failures
+        if winner is None:
+            error_msg = f"Failed to parse winner from verdict. Raw response: {verdict_text}"
+            print(f"ERROR in get_final_verdict: {error_msg}")
+        
         return {
             'raw_response': verdict_text,
             'winner': winner,
@@ -595,6 +604,8 @@ Reasoning: [brief explanation of your decision]"""
         }
 
     except Exception as e:
+        error_msg = f"Exception in get_final_verdict: {str(e)}\nTraceback: {traceback.format_exc()}"
+        print(f"ERROR: {error_msg}")
         return {
             'raw_response': str(e),
             'winner': None,
@@ -777,6 +788,13 @@ def append_interactive_verdict_to_file(text_file, verdict_interactive, debate_in
         f.write(f"Confidence: {verdict_interactive.get('confidence')}%\n")
         if verdict_interactive.get('reasoning'):
             f.write(f"\nReasoning:\n{verdict_interactive['reasoning']}\n")
+        
+        # Log parsing failures or errors
+        if verdict_interactive.get('winner') is None:
+            f.write("\n[ERROR] Failed to parse winner from verdict response.\n")
+            if verdict_interactive.get('error'):
+                f.write(f"Error: {verdict_interactive['error']}\n")
+            f.write(f"\nRaw Response:\n{verdict_interactive.get('raw_response', 'N/A')}\n")
         # f.write(f"\nFull Response:\n{verdict_interactive['raw_response']}\n\n")
 
 
@@ -827,6 +845,13 @@ def append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, d
         f.write(f"Confidence: {verdict_non_interactive.get('confidence')}%\n")
         if verdict_non_interactive.get('reasoning'):
             f.write(f"\nReasoning:\n{verdict_non_interactive['reasoning']}\n")
+        
+        # Log parsing failures or errors
+        if verdict_non_interactive.get('winner') is None:
+            f.write("\n[ERROR] Failed to parse winner from verdict response.\n")
+            if verdict_non_interactive.get('error'):
+                f.write(f"Error: {verdict_non_interactive['error']}\n")
+            f.write(f"\nRaw Response:\n{verdict_non_interactive.get('raw_response', 'N/A')}\n")
         # f.write(f"\nFull Response:\n{verdict_non_interactive['raw_response']}\n\n")
 
 
@@ -938,10 +963,10 @@ def main():
     parser = argparse.ArgumentParser(description='Run a single debate experiment')
     parser.add_argument('--output-dir', type=str, default='./single_debate_runs',
                         help='Output directory for results')
-    parser.add_argument('--seed', type=int, default=None,
-                        help='Random seed for reproducibility')
-    parser.add_argument('--master-seed', type=int, default=None,
-                        help='Master seed used by parallel runner (for logging only)')
+    parser.add_argument('--seed', type=int, default=SEED,
+                        help=f'Random seed for reproducibility (default: {SEED or "random"})')
+    parser.add_argument('--master-seed', type=int, default=MASTER_SEED,
+                        help=f'Master seed used by parallel runner (for logging only, default: {MASTER_SEED or "None"})')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help='Maximum number of debate turns')
     parser.add_argument('--quiet', action='store_true',
@@ -1034,9 +1059,6 @@ def main():
                     option_b=question_data['debater_b_answer']
                 )
         
-        if debater_qa['selected_letter'] is None:
-            print(f'debater_qa error: {debater_qa}')
-        
         # Format output once (for file)
         cache_status = " [CACHED]" if debater_qa.get('cached') else ""
         debater_qa_output = f"Selected: {debater_qa['selected_letter']} - {debater_qa['selected_answer']}{cache_status}\n"
@@ -1044,10 +1066,15 @@ def main():
         debater_qa_output += f"Confidence: {debater_qa.get('confidence')}%\n"
         if debater_qa.get('reasoning'):
             debater_qa_output += f"Reasoning: {debater_qa['reasoning']}\n"
-        # debater_qa_output += f"\nFull Response:\n{debater_qa['raw_response']}"
+        
+        # Log errors or parsing failures
+        if debater_qa.get('selected_letter') is None:
+            print(f'[ERROR] Debater QA failed to parse response')
+            debater_qa_output += f"\n[ERROR] Failed to parse response\n"
+            if debater_qa.get('error'):
+                debater_qa_output += f"Error: {debater_qa['error']}\n"
+            debater_qa_output += f"Raw Response:\n{debater_qa.get('raw_response', 'N/A')}\n"
 
-        # Print concise version to console (first 3 lines only)
-        # print("\n" + "\n".join(debater_qa_output.split("\n")[:3]))
         print(debater_qa_output)
         
         # Write debater QA to file immediately
@@ -1103,10 +1130,15 @@ def main():
         judge_qa_output += f"Confidence: {judge_qa.get('confidence')}%\n"
         if judge_qa.get('reasoning'):
             judge_qa_output += f"Reasoning: {judge_qa['reasoning']}\n"
-        # judge_qa_output += f"\nFull Response:\n{judge_qa['raw_response']}"
+        
+        # Log errors or parsing failures
+        if judge_qa.get('selected_letter') is None:
+            print(f'[ERROR] Judge QA failed to parse response')
+            judge_qa_output += f"\n[ERROR] Failed to parse response\n"
+            if judge_qa.get('error'):
+                judge_qa_output += f"Error: {judge_qa['error']}\n"
+            judge_qa_output += f"Raw Response:\n{judge_qa.get('raw_response', 'N/A')}\n"
 
-        # Print concise version to console (first 3 lines only)
-        # print("\n" + "\n".join(judge_qa_output.split("\n")[:3]))
         print(judge_qa_output)
         
         # Write judge QA to file immediately
