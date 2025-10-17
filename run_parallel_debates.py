@@ -214,7 +214,7 @@ Examples:
         
         run_folder_name = '_'.join(filename_parts)
         run_output_dir = str(Path(args.output_dir) / run_folder_name)
-        master_csv = str(Path(run_output_dir) / f'{run_folder_name}.csv')
+        master_csv = str(Path(run_output_dir) / 'master_results.csv')
     
     # Create run-specific output directory
     os.makedirs(run_output_dir, exist_ok=True)

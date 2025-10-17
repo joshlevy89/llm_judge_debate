@@ -12,6 +12,7 @@ This script:
 """
 
 import os
+import sys
 import re
 import json
 import time
@@ -34,7 +35,7 @@ from config import (
     DIRECT_QA_TEMPERATURE, JUDGE_DECISION_TEMPERATURE, FINAL_VERDICT_TEMPERATURE,
     MAX_RETRIES, RETRY_BASE_WAIT,
     MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT,
-    USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE,
+    USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE, BASELINE_CACHE_DIR,
     DEBATE_MODE,
     DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
 )
@@ -591,12 +592,16 @@ Reasoning: [brief explanation of your decision]"""
         }
 
 
-def save_config(output_dir, max_turns_used=None):
+def save_config(output_dir, max_turns_used=None, seed=None, master_seed=None, quiet=False, output_dir_override=False):
     """Save the current configuration to the output directory.
     
     Args:
         output_dir: Directory to save config file
         max_turns_used: Actual max_turns value used in this run (if different from default)
+        seed: Random seed used for this run
+        master_seed: Master seed from parallel runner
+        quiet: Whether quiet mode was enabled
+        output_dir_override: Whether output_dir was overridden via CLI
     """
     config_file = Path(output_dir) / 'config_used.txt'
     
@@ -617,14 +622,34 @@ def save_config(output_dir, max_turns_used=None):
         f.write(f"MAX_RETRIES: {MAX_RETRIES}\n")
         f.write(f"RETRY_BASE_WAIT: {RETRY_BASE_WAIT}\n\n")
         
-        f.write("# Debate Limits\n")
+        f.write("# Debate Configuration\n")
         # Use the actual value if provided, otherwise use default
         actual_max_turns = max_turns_used if max_turns_used is not None else MAX_TURNS_DEFAULT
         f.write(f"MAX_TURNS: {actual_max_turns}")
         if max_turns_used is not None and max_turns_used != MAX_TURNS_DEFAULT:
             f.write(f" (default: {MAX_TURNS_DEFAULT}, overridden via CLI)")
         f.write("\n")
-        f.write(f"DEBATER_WORD_LIMIT: {DEBATER_WORD_LIMIT}\n\n")
+        f.write(f"DEBATER_WORD_LIMIT: {DEBATER_WORD_LIMIT}\n")
+        f.write(f"DEBATE_MODE: {DEBATE_MODE}\n\n")
+        
+        f.write("# Dataset Configuration\n")
+        f.write(f"DATASET_NAME: {DATASET_NAME}\n")
+        f.write(f"DATASET_SUBSET: {DATASET_SUBSET}\n")
+        f.write(f"DATASET_SPLIT: {DATASET_SPLIT}\n\n")
+        
+        f.write("# Baseline Cache Configuration\n")
+        f.write(f"USE_BASELINE_CACHE: {USE_BASELINE_CACHE}\n")
+        f.write(f"SAVE_TO_BASELINE_CACHE: {SAVE_TO_BASELINE_CACHE}\n")
+        f.write(f"BASELINE_CACHE_DIR: {BASELINE_CACHE_DIR}\n\n")
+        
+        f.write("# Command-line Arguments\n")
+        f.write(f"seed: {seed if seed is not None else 'None (random)'}\n")
+        if master_seed is not None:
+            f.write(f"master_seed: {master_seed}\n")
+        f.write(f"quiet: {quiet}\n")
+        if output_dir_override:
+            f.write(f"output_dir: {output_dir} (overridden via CLI)\n")
+        f.write("\n")
         
         f.write(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
     
@@ -941,7 +966,15 @@ def main():
     # Save config file (only once per output directory)
     config_file = Path(args.output_dir) / 'config_used.txt'
     if not config_file.exists():
-        save_config(args.output_dir, max_turns_used=args.max_turns)
+        output_dir_override = '--output-dir' in sys.argv
+        save_config(
+            args.output_dir, 
+            max_turns_used=args.max_turns,
+            seed=args.seed,
+            master_seed=args.master_seed,
+            quiet=args.quiet,
+            output_dir_override=output_dir_override
+        )
 
     print("Loading GPQA question...")
     question_data = load_gpqa_question(random_seed=args.seed)
@@ -949,7 +982,7 @@ def main():
     # Initialize debate detail file with header and question
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     question_idx = question_data['question_idx']
-    text_file = Path(args.output_dir) / f'debate_detail_{args.run_id}_{timestamp}_{question_idx}.txt'
+    text_file = Path(args.output_dir) / f'log_{args.run_id}.txt'
     
     try:
         initialize_debate_detail_file(text_file, question_data, args.run_id, 
