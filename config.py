@@ -42,8 +42,10 @@ DATASET_SUBSET = "gpqa_diamond"
 DATASET_SPLIT = "train"
 
 # Random seed configuration
-SEED = 1  # Random seed for reproducibility (None = random)
-MASTER_SEED = 42  # Master seed for parallel runs (None = random)
+# For typical use, run parallel_debates.py (even with --num-debates 1) which uses PARALLEL_DEBATE_MASTER_SEED
+# SINGLE_DEBATE_SEED is only used when calling run_single_debate.py directly (e.g., for testing)
+SINGLE_DEBATE_SEED = 1  # Seed for direct run_single_debate.py calls (None = random, rarely used)
+PARALLEL_DEBATE_MASTER_SEED = 42  # Master seed for parallel runs - generates individual seeds for each debate (None = random)
 
 # Cache key includes: model name, question_idx, temperature, dataset info
 # This ensures cache is invalidated when models, datasets, or questions change

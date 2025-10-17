@@ -38,7 +38,7 @@ from config import (
     USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE, BASELINE_CACHE_DIR,
     DEBATE_MODE,
     DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT,
-    SEED, MASTER_SEED
+    SINGLE_DEBATE_SEED, PARALLEL_DEBATE_MASTER_SEED
 )
 import baseline_cache
 
@@ -621,8 +621,8 @@ def save_config(output_dir, max_turns_used=None, seed=None, master_seed=None, qu
     Args:
         output_dir: Directory to save config file
         max_turns_used: Actual max_turns value used in this run (if different from default)
-        seed: Random seed used for this run
-        master_seed: Master seed from parallel runner
+        seed: Random seed for single debate runs (None for parallel runs, where seeds are auto-generated)
+        master_seed: Master seed from parallel runner (None for single runs)
         quiet: Whether quiet mode was enabled
         output_dir_override: Whether output_dir was overridden via CLI
     """
@@ -960,13 +960,15 @@ def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactiv
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Run a single debate experiment')
+    parser = argparse.ArgumentParser(
+        description='Run a single debate experiment. NOTE: For typical use, run run_parallel_debates.py instead (even with --num-debates 1).'
+    )
     parser.add_argument('--output-dir', type=str, default='./single_debate_runs',
                         help='Output directory for results')
-    parser.add_argument('--seed', type=int, default=SEED,
-                        help=f'Random seed for reproducibility (default: {SEED or "random"})')
-    parser.add_argument('--master-seed', type=int, default=MASTER_SEED,
-                        help=f'Master seed used by parallel runner (for logging only, default: {MASTER_SEED or "None"})')
+    parser.add_argument('--seed', type=int, default=SINGLE_DEBATE_SEED,
+                        help=f'Random seed for question selection (default: {SINGLE_DEBATE_SEED or "random"})')
+    parser.add_argument('--master-seed', type=int, default=PARALLEL_DEBATE_MASTER_SEED,
+                        help=f'Master seed from parallel runner, for logging only (default: {PARALLEL_DEBATE_MASTER_SEED or "None"})')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help='Maximum number of debate turns')
     parser.add_argument('--quiet', action='store_true',
@@ -990,10 +992,13 @@ def main():
     config_file = Path(args.output_dir) / 'config_used.json'
     if not config_file.exists():
         output_dir_override = '--output-dir' in sys.argv
+        # For parallel runs, only log master_seed (individual seeds are auto-generated)
+        # For single runs, log the seed used
+        config_seed = None if args.master_seed is not None else args.seed
         save_config(
             args.output_dir, 
             max_turns_used=args.max_turns,
-            seed=args.seed,
+            seed=config_seed,
             master_seed=args.master_seed,
             quiet=args.quiet,
             output_dir_override=output_dir_override
