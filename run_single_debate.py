@@ -726,6 +726,8 @@ def main():
         question_data['correct_answer'],
         model_type='debater'
     )
+    if debater_qa['selected_letter'] is None:
+        print(f'debater_qa error: {debater_qa}')
     # Format output once (for file)
     debater_qa_output = f"Selected: {debater_qa['selected_letter']} - {debater_qa['selected_answer']}\n"
     debater_qa_output += f"Result: {'CORRECT' if debater_qa['is_correct'] else 'INCORRECT'}\n"

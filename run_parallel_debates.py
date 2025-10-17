@@ -215,9 +215,12 @@ Examples:
     # Create output directory
     os.makedirs(args.output_dir, exist_ok=True)
     
-    # Generate descriptive master CSV filename if not specified
+    # Generate descriptive run folder name and master CSV filename
     if args.master_csv:
         master_csv = args.master_csv
+        # Extract folder name from custom CSV path
+        run_folder_name = Path(master_csv).stem
+        run_output_dir = str(Path(args.output_dir) / run_folder_name)
     else:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         
@@ -241,26 +244,23 @@ Examples:
         # Add timestamp
         filename_parts.append(timestamp)
         
-        master_csv = str(Path(args.output_dir) / f'{"_".join(filename_parts)}.csv')
+        run_folder_name = '_'.join(filename_parts)
+        run_output_dir = str(Path(args.output_dir) / run_folder_name)
+        master_csv = str(Path(run_output_dir) / f'{run_folder_name}.csv')
+    
+    # Create run-specific output directory
+    os.makedirs(run_output_dir, exist_ok=True)
     
     print("="*70)
     print("PARALLEL DEBATE RUNNER")
     print("="*70)
     print(f"Number of debates: {args.num_debates}")
-    print(f"Output directory: {args.output_dir}")
+    print(f"Run folder: {run_output_dir}")
     print(f"Master CSV: {master_csv}")
     print(f"Max turns per debate: {args.max_turns}")
     print("="*70)
     
-    # Clear the individual results CSV before starting
-    # (so we don't aggregate old results with new ones)
-    individual_csv = Path(args.output_dir) / 'debate_results_summary.csv'
-    if individual_csv.exists():
-        # Backup old results
-        backup_name = f'debate_results_summary_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
-        backup_path = Path(args.output_dir) / backup_name
-        individual_csv.rename(backup_path)
-        print(f"Backed up existing results to {backup_name}")
+    # Note: No need to backup individual CSV since each run has its own folder
     
     # Launch debate processes
     processes = []
@@ -270,7 +270,7 @@ Examples:
         seed = args.seeds[i] if args.seeds else None
         process, log_file = run_single_debate_process(
             debate_id=i+1,
-            output_dir=args.output_dir,
+            output_dir=run_output_dir,
             seed=seed,
             max_turns=args.max_turns,
             quiet=args.quiet
@@ -327,7 +327,7 @@ Examples:
     
     # Aggregate results
     print("\nAggregating results...")
-    aggregate_results(args.output_dir, master_csv)
+    aggregate_results(run_output_dir, master_csv)
     
     # Print statistics
     print_aggregate_stats(master_csv)
@@ -339,7 +339,7 @@ Examples:
         print(f"  Log: {log_file}")
     
     # List detail files
-    detail_files = sorted(Path(args.output_dir).glob('debate_detail_*.txt'))
+    detail_files = sorted(Path(run_output_dir).glob('debate_detail_*.txt'))
     if detail_files:
         print(f"\n  Detail files ({len(detail_files)}):")
         for detail_file in detail_files[-args.num_debates:]:  # Show only recent ones
