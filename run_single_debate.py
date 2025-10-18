@@ -33,7 +33,7 @@ from dotenv import load_dotenv
 from config import (
     DEBATE_MODEL, JUDGE_MODEL,
     DIRECT_QA_TEMPERATURE, JUDGE_DECISION_TEMPERATURE, FINAL_VERDICT_TEMPERATURE,
-    MAX_RETRIES, RETRY_BASE_WAIT,
+    MAX_RETRIES, RETRY_BASE_WAIT, API_TIMEOUT,
     MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT,
     USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE, BASELINE_CACHE_DIR,
     DEBATE_MODE,
@@ -45,10 +45,19 @@ import baseline_cache
 # Load environment variables
 load_dotenv()
 
-# Initialize API clients
-genai_client = genai.Client(api_key=os.environ.get('GEMINI_API_KEY'))
-openai_client = OpenAI(api_key=os.environ.get('OPENAI_API_KEY'))
-anthropic_client = Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
+# Initialize API clients with timeouts
+genai_client = genai.Client(
+    api_key=os.environ.get('GEMINI_API_KEY'),
+    http_options={'timeout': API_TIMEOUT}
+)
+openai_client = OpenAI(
+    api_key=os.environ.get('OPENAI_API_KEY'),
+    timeout=API_TIMEOUT
+)
+anthropic_client = Anthropic(
+    api_key=os.environ.get('ANTHROPIC_API_KEY'),
+    timeout=API_TIMEOUT
+)
 
 
 def get_provider(model_name):
@@ -126,6 +135,9 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
         
         except Exception as e:
             error_msg = str(e)
+            error_type = type(e).__name__
+            
+            # Check if error is retryable
             is_retryable = (
                 '503' in error_msg or
                 '429' in error_msg or
@@ -133,16 +145,20 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
                 'rate limit' in error_msg.lower() or
                 'quota' in error_msg.lower() or
                 'RESOURCE_EXHAUSTED' in error_msg or
-                'UNAVAILABLE' in error_msg
+                'UNAVAILABLE' in error_msg or
+                'timeout' in error_msg.lower() or
+                'timed out' in error_msg.lower() or
+                'TimeoutError' in error_type
             )
             
             if is_retryable and attempt < max_retries - 1:
                 wait_time = RETRY_BASE_WAIT ** (attempt + 1)
-                print(f"[LLM retry {attempt+1}/{max_retries-1}] Waiting {wait_time}s due to: {error_msg[:100]}...")
+                print(f"[LLM retry {attempt+1}/{max_retries-1}] Waiting {wait_time}s due to: {error_type}: {error_msg[:100]}...")
                 time.sleep(wait_time)
                 continue
             else:
                 # Either non-retryable error or exhausted retries
+                print(f"[LLM ERROR] {error_type}: {error_msg[:200]}")
                 raise
 
 
