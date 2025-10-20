@@ -162,12 +162,14 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
                 raise
 
 
-def load_gpqa_question(question_idx=None):
+def load_gpqa_question(question_idx=None, master_seed=None):
     """Load a GPQA diamond question.
     
     Args:
         question_idx: If provided, loads that specific question index.
                      If None, selects randomly.
+        master_seed: If provided with question_idx, seeds random operations
+                    for reproducible incorrect answer and position assignment.
     """
     dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
     
@@ -188,17 +190,32 @@ def load_gpqa_question(question_idx=None):
             question_data.get('Incorrect Answer 3', '')
         ]
         incorrect_answers = [a for a in incorrect_answers if a]
+        # Assign indices: 0=correct, 1-3=incorrect answers
+        correct_idx = 0
+        incorrect_indices = [i+1 for i in range(len(incorrect_answers))]
     elif 'question' in question_data:
         question = question_data['question']
         choices = question_data['options']
         correct_idx = question_data['answer']
         correct_answer = choices[correct_idx]
-        incorrect_answers = [c for i, c in enumerate(choices) if i != correct_idx]
+        # Track incorrect answer indices
+        incorrect_indices = [i for i in range(len(choices)) if i != correct_idx]
+        incorrect_answers = [choices[i] for i in incorrect_indices]
     else:
         raise ValueError(f"Unexpected GPQA format: {question_data.keys()}")
 
+    # Seed random operations for reproducibility if master_seed provided
+    if master_seed is not None and question_idx is not None:
+        random.seed(master_seed + question_idx)
+
     # Pick one random incorrect answer
-    incorrect_answer = random.choice(incorrect_answers)
+    if incorrect_indices is not None:
+        selected_incorrect_idx_pos = random.randint(0, len(incorrect_answers) - 1)
+        incorrect_answer = incorrect_answers[selected_incorrect_idx_pos]
+        selected_incorrect_idx = incorrect_indices[selected_incorrect_idx_pos]
+    else:
+        incorrect_answer = random.choice(incorrect_answers)
+        selected_incorrect_idx = None
 
     # Randomly assign positions
     positions = ['correct', 'incorrect']
@@ -209,6 +226,18 @@ def load_gpqa_question(question_idx=None):
     debater_a_answer = correct_answer if debater_a_position == 'correct' else incorrect_answer
     debater_b_answer = incorrect_answer if debater_a_position == 'correct' else correct_answer
 
+    # Track choice indices and metadata
+    if correct_idx is not None and selected_incorrect_idx is not None:
+        debater_a_idx = correct_idx if debater_a_position == 'correct' else selected_incorrect_idx
+        debater_b_idx = selected_incorrect_idx if debater_a_position == 'correct' else correct_idx
+        choices_selected = [debater_a_idx, debater_b_idx]
+        choice_values = [debater_a_answer, debater_b_answer]
+        is_correct = [debater_a_position == 'correct', debater_b_position == 'correct']
+    else:
+        choices_selected = None
+        choice_values = [debater_a_answer, debater_b_answer]
+        is_correct = [debater_a_position == 'correct', debater_b_position == 'correct']
+
     return {
         'question_idx': random_idx,
         'question': question,
@@ -218,6 +247,9 @@ def load_gpqa_question(question_idx=None):
         'debater_b_answer': debater_b_answer,
         'debater_a_position': debater_a_position,
         'debater_b_position': debater_b_position,
+        'choices_selected': choices_selected,
+        'choice_values': choice_values,
+        'is_correct': is_correct,
     }
 
 
@@ -300,7 +332,7 @@ Reasoning: [brief explanation]"""
         else:
             selected_answer = None
 
-        is_correct = (selected_answer == correct_answer) if selected_answer else False
+        is_correct = (selected_answer == correct_answer) if selected_answer else None
 
         return {
             'raw_response': answer_text,
@@ -318,7 +350,7 @@ Reasoning: [brief explanation]"""
             'selected_answer': None,
             'confidence': None,
             'reasoning': None,
-            'is_correct': False,
+            'is_correct': None,
             'error': str(e)
         }
 
@@ -921,7 +953,15 @@ def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactiv
     result = {
         'run_id': run_id,
         'timestamp': timestamp,
-        'question_idx': question_idx,
+        'question': {
+            'question_idx': question_idx,
+            'choices_selected': question_data.get('choices_selected'),
+            'choice_values': question_data.get('choice_values'),
+            'is_correct': question_data.get('is_correct'),
+            'dataset_name': DATASET_NAME,
+            'dataset_subset': DATASET_SUBSET,
+            'dataset_split': DATASET_SPLIT,
+        },
         'debater_direct': {
             'correct': debater_qa['is_correct'],
             'confidence': debater_qa.get('confidence'),
@@ -1023,7 +1063,7 @@ def main():
         )
 
     print("Loading GPQA question...")
-    question_data = load_gpqa_question(question_idx=args.question_idx)
+    question_data = load_gpqa_question(question_idx=args.question_idx, master_seed=args.master_seed)
     
     # Initialize debate detail file with header and question
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

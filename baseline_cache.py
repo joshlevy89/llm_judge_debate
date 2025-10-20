@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, Optional
+from filelock import FileLock
 
 from config import (
     BASELINE_CACHE_DIR, DEBATE_MODEL, JUDGE_MODEL, DIRECT_QA_TEMPERATURE,
@@ -84,13 +85,14 @@ def _load_cache(cache_file: Path) -> Dict:
         }
 
 
-def _save_cache(cache_file: Path, cache_data: Dict) -> None:
+def _save_cache(cache_file: Path, cache_data: Dict, lock: FileLock) -> None:
     """
-    Save cache to JSON file.
+    Save cache to JSON file with lock held.
     
     Args:
         cache_file: Path to cache file
         cache_data: Dictionary with cache data
+        lock: FileLock to use (must already be acquired)
     """
     # Ensure directory exists
     cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -166,7 +168,7 @@ def get_cached_qa(question_idx: int, model_type: str, option_a: str = None, opti
 
 def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict, option_a: str = None, option_b: str = None) -> None:
     """
-    Save direct QA result to cache.
+    Save direct QA result to cache with file locking to prevent race conditions.
     
     Args:
         question_idx: Index of the question
@@ -181,42 +183,47 @@ def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict, option
     # Get cache file path
     cache_filename = _get_cache_filename(model_name, model_type)
     cache_file = Path(BASELINE_CACHE_DIR) / cache_filename
+    lock_file = cache_file.with_suffix('.lock')
     
-    # Load existing cache
-    cache_data = _load_cache(cache_file)
+    # Use file lock for entire read-modify-write operation
+    lock = FileLock(str(lock_file), timeout=30)
     
-    # Update metadata
-    cache_data["metadata"]["model_name"] = model_name
-    cache_data["metadata"]["model_type"] = model_type
-    cache_data["metadata"]["temperature"] = DIRECT_QA_TEMPERATURE
-    cache_data["metadata"]["dataset_name"] = DATASET_NAME
-    cache_data["metadata"]["dataset_subset"] = DATASET_SUBSET
-    cache_data["metadata"]["dataset_split"] = DATASET_SPLIT
-    
-    # Prepare result to cache (exclude raw_response to save space)
-    cached_result = {
-        "selected_letter": qa_result.get("selected_letter"),
-        "selected_answer": qa_result.get("selected_answer"),
-        "is_correct": qa_result.get("is_correct"),
-        "confidence": qa_result.get("confidence"),
-        "reasoning": qa_result.get("reasoning"),
-        "temperature": DIRECT_QA_TEMPERATURE,
-        "timestamp": datetime.now().isoformat()
-    }
-    
-    # Store the option values for validation on retrieval
-    # This ensures we detect when choice order has changed
-    if option_a is not None:
-        cached_result["option_a"] = option_a
-    if option_b is not None:
-        cached_result["option_b"] = option_b
-    
-    # Save to cache
-    question_key = str(question_idx)
-    cache_data["results"][question_key] = cached_result
-    
-    # Write to file
-    _save_cache(cache_file, cache_data)
+    with lock:
+        # Load existing cache
+        cache_data = _load_cache(cache_file)
+        
+        # Update metadata
+        cache_data["metadata"]["model_name"] = model_name
+        cache_data["metadata"]["model_type"] = model_type
+        cache_data["metadata"]["temperature"] = DIRECT_QA_TEMPERATURE
+        cache_data["metadata"]["dataset_name"] = DATASET_NAME
+        cache_data["metadata"]["dataset_subset"] = DATASET_SUBSET
+        cache_data["metadata"]["dataset_split"] = DATASET_SPLIT
+        
+        # Prepare result to cache (exclude raw_response to save space)
+        cached_result = {
+            "selected_letter": qa_result.get("selected_letter"),
+            "selected_answer": qa_result.get("selected_answer"),
+            "is_correct": qa_result.get("is_correct"),
+            "confidence": qa_result.get("confidence"),
+            "reasoning": qa_result.get("reasoning"),
+            "temperature": DIRECT_QA_TEMPERATURE,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Store the option values for validation on retrieval
+        # This ensures we detect when choice order has changed
+        if option_a is not None:
+            cached_result["option_a"] = option_a
+        if option_b is not None:
+            cached_result["option_b"] = option_b
+        
+        # Save to cache
+        question_key = str(question_idx)
+        cache_data["results"][question_key] = cached_result
+        
+        # Write to file (lock still held)
+        _save_cache(cache_file, cache_data, lock)
 
 
 def clear_cache(model_type: Optional[str] = None) -> None:

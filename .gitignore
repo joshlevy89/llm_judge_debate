@@ -7,3 +7,4 @@ __pycache__/
 baseline_cache/*
 debate_results/*
 parallel_debate_runs/
+.cursorrules
