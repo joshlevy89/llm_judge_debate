@@ -48,7 +48,7 @@ load_dotenv()
 # Initialize API clients with timeouts
 genai_client = genai.Client(
     api_key=os.environ.get('GEMINI_API_KEY'),
-    http_options={'timeout': API_TIMEOUT}
+    http_options={'timeout': API_TIMEOUT * 1000}  # Convert seconds to milliseconds
 )
 openai_client = OpenAI(
     api_key=os.environ.get('OPENAI_API_KEY'),

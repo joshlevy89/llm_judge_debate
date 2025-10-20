@@ -6,14 +6,15 @@ used across the debate system.
 """
 
 # Model configuration
-# DEBATE_MODEL = 'gemini-2.5-flash'
+
+# DEBATE_MODEL = 'gpt-4o-mini'
 # JUDGE_MODEL = 'gpt-4o-mini'
+
+DEBATE_MODEL = 'gemini-2.5-flash'
+JUDGE_MODEL = 'gpt-4o-mini'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gpt-3.5-turbo'
-
-DEBATE_MODEL = 'gpt-4o-mini'
-JUDGE_MODEL = 'gpt-4o-mini'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gemini-2.5-flash'
@@ -26,7 +27,7 @@ FINAL_VERDICT_TEMPERATURE = 0.3  # Temperature for judge's final verdict
 # Retry configuration
 MAX_RETRIES = 2  # Maximum retry attempts for API calls (1 retry after initial attempt)
 RETRY_BASE_WAIT = 2  # Base wait time in seconds for exponential backoff
-API_TIMEOUT = 120  # Timeout in seconds for API calls (2 minutes)
+API_TIMEOUT = 120  # Timeout in seconds for API calls (2 minutes) - NOTE: Converted to ms for Gemini
 
 # Debate limits
 MAX_TURNS_DEFAULT = 20  # Default maximum number of debate turns
