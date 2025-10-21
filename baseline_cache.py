@@ -23,6 +23,11 @@ from config import (
     DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
 )
 
+try:
+    from config import DEBATE_MODEL_EFFORT
+except ImportError:
+    DEBATE_MODEL_EFFORT = None
+
 
 def _get_cache_filename(model_name: str, model_type: str) -> str:
     """
@@ -37,6 +42,11 @@ def _get_cache_filename(model_name: str, model_type: str) -> str:
     """
     # Sanitize model name for filename
     safe_model_name = model_name.replace('/', '_').replace(':', '_')
+    
+    # Include effort in filename for debater models
+    if model_type == 'debater' and DEBATE_MODEL_EFFORT is not None:
+        return f"baseline_{model_type}_{safe_model_name}_temp{DIRECT_QA_TEMPERATURE}_effort{DEBATE_MODEL_EFFORT}.json"
+    
     return f"baseline_{model_type}_{safe_model_name}_temp{DIRECT_QA_TEMPERATURE}.json"
 
 

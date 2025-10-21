@@ -40,6 +40,11 @@ from config import (
     DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT,
     MASTER_SEED
 )
+
+try:
+    from config import DEBATE_MODEL_EFFORT
+except ImportError:
+    DEBATE_MODEL_EFFORT = None
 import baseline_cache
 
 # Load environment variables
@@ -73,7 +78,7 @@ def get_provider(model_name):
         raise ValueError(f"Unknown model provider for model: {model_name}")
 
 
-def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_retries=MAX_RETRIES):
+def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_retries=MAX_RETRIES, effort=None):
     """
     Unified LLM generation wrapper for all providers with automatic retry logic.
     
@@ -83,6 +88,7 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
         temperature: Optional temperature (uses default if None)
         system_prompt: Optional system prompt (for OpenAI/Anthropic)
         max_retries: Maximum number of retry attempts for transient errors
+        effort: Optional reasoning effort for OpenAI models ('low', 'medium', 'high')
     
     Returns:
         Generated text response
@@ -100,6 +106,8 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
                 kwargs = {"model": model_name, "messages": messages}
                 if temperature is not None:
                     kwargs["temperature"] = temperature
+                if effort is not None:
+                    kwargs["reasoning_effort"] = effort
                     
                 response = openai_client.chat.completions.create(**kwargs)
                 return response.choices[0].message.content.strip()
@@ -281,7 +289,8 @@ Reasoning: [brief explanation]"""
 
     try:
         model = DEBATE_MODEL if model_type == 'debater' else JUDGE_MODEL
-        answer_text = llm_generate(model, prompt, temperature=DIRECT_QA_TEMPERATURE)
+        effort = DEBATE_MODEL_EFFORT if model_type == 'debater' else None
+        answer_text = llm_generate(model, prompt, temperature=DIRECT_QA_TEMPERATURE, effort=effort)
 
         # Parse the response
         selected_letter = None
@@ -402,7 +411,7 @@ def debate_round(question, debater_a_answer, debater_b_answer, history, current_
     if history:
         prompt += f"\n\nDebate so far:\n{history}"
 
-    return llm_generate(DEBATE_MODEL, prompt)
+    return llm_generate(DEBATE_MODEL, prompt, effort=DEBATE_MODEL_EFFORT)
 
 
 def create_judge_prompt():
@@ -747,6 +756,7 @@ def save_config(output_dir, max_turns_used=None, master_seed=None, quiet=False, 
     config_dict = {
         "model_configuration": {
             "debate_model": DEBATE_MODEL,
+            "debate_model_effort": DEBATE_MODEL_EFFORT,
             "judge_model": JUDGE_MODEL
         },
         "temperature_settings": {

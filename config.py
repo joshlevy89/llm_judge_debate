@@ -10,8 +10,8 @@ used across the debate system.
 # DEBATE_MODEL = 'gpt-4o-mini'
 # JUDGE_MODEL = 'gpt-4o-mini'
 
-DEBATE_MODEL = 'gemini-2.5-flash'
-JUDGE_MODEL = 'gpt-4o-mini'
+# DEBATE_MODEL = 'gemini-2.5-flash'
+# JUDGE_MODEL = 'gpt-4o-mini'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gemini-2.5-flash'
@@ -19,8 +19,18 @@ JUDGE_MODEL = 'gpt-4o-mini'
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gpt-3.5-turbo'
 
+# DEBATE_MODEL = 'gemini-2.5-flash'
+# JUDGE_MODEL = 'claude-3-haiku-20240307'
+
+# DEBATE_MODEL = 'gemini-2.5-flash'
+# JUDGE_MODEL = 'claude-3-5-haiku-20241022'
+
+DEBATE_MODEL = 'gpt-5-mini'
+DEBATE_MODEL_EFFORT = 'medium'  # Options: 'low', 'medium', 'high'
+JUDGE_MODEL = 'gpt-4o-mini'
+
 # Temperature settings
-DIRECT_QA_TEMPERATURE = 0.0  # Temperature for initial direct QA tests
+DIRECT_QA_TEMPERATURE = 1.0  # Temperature for initial direct QA tests
 JUDGE_DECISION_TEMPERATURE = 0.7  # Temperature for judge's debate decisions
 FINAL_VERDICT_TEMPERATURE = 0.3  # Temperature for judge's final verdict
 
