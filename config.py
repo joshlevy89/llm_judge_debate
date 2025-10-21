@@ -30,7 +30,7 @@ RETRY_BASE_WAIT = 2  # Base wait time in seconds for exponential backoff
 API_TIMEOUT = 120  # Timeout in seconds for API calls (2 minutes) - NOTE: Converted to ms for Gemini
 
 # Debate limits
-MAX_TURNS_DEFAULT = 2  # Default maximum number of debate turns
+MAX_TURNS_DEFAULT = 1  # Default maximum number of debate turns
 DEBATER_WORD_LIMIT = 200  # Maximum words per debater response
 
 # Debate mode configuration
