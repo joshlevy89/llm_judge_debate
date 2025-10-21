@@ -1111,69 +1111,67 @@ def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactiv
     return jsonl_file
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description='Run a single debate experiment. NOTE: Use run_parallel_debates.py instead (even with --num-debates 1).'
-    )
-    parser.add_argument('--output-dir', type=str, default='./single_debate_runs',
-                        help='Output directory for results')
-    parser.add_argument('--question-idx', type=int, default=None,
-                        help='Question index to use (passed from parallel runner, None = random)')
-    parser.add_argument('--master-seed', type=int, default=None,
-                        help='Master seed from parallel runner, for logging only')
-    parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
-                        help='Maximum number of debate turns')
-    parser.add_argument('--quiet', action='store_true',
-                        help='Suppress verbose output')
-    parser.add_argument('--run-id', type=str, default=None,
-                        help='Unique run identifier (auto-generated if not provided)')
-    parser.add_argument('--jsonl-filename', type=str, default=None,
-                        help='JSONL filename to append results to (default: master_results.jsonl)')
-
-    args = parser.parse_args()
+def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max_turns=MAX_TURNS_DEFAULT, 
+                            quiet=False, run_id=None, jsonl_filename=None):
+    """
+    Run a single debate experiment. This function can be called directly or from CLI.
     
+    Args:
+        output_dir: Output directory for results
+        question_idx: Question index to use (None = random)
+        master_seed: Master seed from parallel runner, for logging only
+        max_turns: Maximum number of debate turns
+        quiet: Suppress verbose output
+        run_id: Unique run identifier (auto-generated if not provided)
+        jsonl_filename: JSONL filename to append results to (default: master_results.jsonl)
+    
+    Returns:
+        Dict with run_id and paths to output files
+    """
     # Generate run_id if not provided
-    if args.run_id is None:
+    if run_id is None:
         import uuid
-        args.run_id = str(uuid.uuid4())[:8]
+        run_id = str(uuid.uuid4())[:8]
     
     # Setup output directory and file paths
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
     
     # Save config file (only once per output directory)
-    config_file = Path(args.output_dir) / 'config_used.json'
+    config_file = Path(output_dir) / 'config_used.json'
     if not config_file.exists():
         output_dir_override = '--output-dir' in sys.argv
-        # Only save master_seed to config (question indices are sampled from it)
         save_config(
-            args.output_dir, 
-            max_turns_used=args.max_turns,
-            master_seed=args.master_seed,
-            quiet=args.quiet,
+            output_dir, 
+            max_turns_used=max_turns,
+            master_seed=master_seed,
+            quiet=quiet,
             output_dir_override=output_dir_override
         )
 
-    print("Loading GPQA question...")
-    question_data = load_gpqa_question(question_idx=args.question_idx, master_seed=args.master_seed)
+    if not quiet:
+        print("Loading GPQA question...")
+    question_data = load_gpqa_question(question_idx=question_idx, master_seed=master_seed)
     
     # Initialize debate detail file with header and question
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    question_idx = question_data['question_idx']
-    text_file = Path(args.output_dir) / f'log_{args.run_id}.txt'
+    actual_question_idx = question_data['question_idx']
+    text_file = Path(output_dir) / f'log_{run_id}.txt'
     
     try:
-        initialize_debate_detail_file(text_file, question_data, args.run_id, 
-                                     question_idx=args.question_idx, master_seed=args.master_seed)
+        initialize_debate_detail_file(text_file, question_data, run_id, 
+                                     question_idx=question_idx, master_seed=master_seed)
 
-        print(f"\nQuestion {question_data['question_idx']}:")
-        print(question_data['question'])
-        print(f"\nDebater A: {question_data['debater_a_answer']} ({question_data['debater_a_position']})")
-        print(f"Debater B: {question_data['debater_b_answer']} ({question_data['debater_b_position']})")
+        if not quiet:
+            print(f"\nQuestion {question_data['question_idx']}:")
+            print(question_data['question'])
+            print(f"\nDebater A: {question_data['debater_a_answer']} ({question_data['debater_a_position']})")
+            print(f"Debater B: {question_data['debater_b_answer']} ({question_data['debater_b_position']})")
 
         # Test debater direct QA
-        print("\n" + "="*70)
-        print("1. DEBATER MODEL DIRECT QA")
-        print("="*70)
+        if not quiet:
+            print("\n" + "="*70)
+            print("1. DEBATER MODEL DIRECT QA")
+            print("="*70)
         
         # Check cache first
         cached_debater_qa = None
@@ -1186,7 +1184,8 @@ def main():
             )
         
         if cached_debater_qa:
-            print("[Using cached result]")
+            if not quiet:
+                print("[Using cached result]")
             debater_qa = cached_debater_qa.copy()
             debater_qa['cached'] = True
             # Add raw_response placeholder if needed for compatibility
@@ -1229,15 +1228,17 @@ def main():
                 debater_qa_output += f"Error: {debater_qa['error']}\n"
             debater_qa_output += f"Raw Response:\n{debater_qa.get('raw_response', 'N/A')}\n"
 
-        print(debater_qa_output)
+        if not quiet:
+            print(debater_qa_output)
         
         # Write debater QA to file immediately
         append_debater_qa_to_file(text_file, question_data, debater_qa_output)
 
         # Test judge direct QA
-        print("\n" + "="*70)
-        print("2. JUDGE MODEL DIRECT QA")
-        print("="*70)
+        if not quiet:
+            print("\n" + "="*70)
+            print("2. JUDGE MODEL DIRECT QA")
+            print("="*70)
         
         # Check cache first
         cached_judge_qa = None
@@ -1250,7 +1251,8 @@ def main():
             )
         
         if cached_judge_qa:
-            print("[Using cached result]")
+            if not quiet:
+                print("[Using cached result]")
             judge_qa = cached_judge_qa.copy()
             judge_qa['cached'] = True
             # Add raw_response placeholder if needed for compatibility
@@ -1293,7 +1295,8 @@ def main():
                 judge_qa_output += f"Error: {judge_qa['error']}\n"
             judge_qa_output += f"Raw Response:\n{judge_qa.get('raw_response', 'N/A')}\n"
 
-        print(judge_qa_output)
+        if not quiet:
+            print(judge_qa_output)
         
         # Write judge QA to file immediately
         append_judge_qa_to_file(text_file, question_data, judge_qa_output)
@@ -1314,14 +1317,15 @@ def main():
         
         # Run interactive debate if enabled
         if run_interactive:
-            print(f"\n{step_num}. Running LLM-judged debate (INTERACTIVE)...")
+            if not quiet:
+                print(f"\n{step_num}. Running LLM-judged debate (INTERACTIVE)...")
             try:
                 debate_interactive = LLMJudgeDebate(
                     question_data['question'],
                     question_data['debater_a_answer'],
                     question_data['debater_b_answer'],
-                    max_turns=args.max_turns,
-                    verbose=not args.quiet,
+                    max_turns=max_turns,
+                    verbose=not quiet,
                     interactive=True,
                     debate_style=DEBATE_STYLE
                 )
@@ -1331,16 +1335,18 @@ def main():
                 append_interactive_debate_to_file(text_file, debate_interactive)
 
                 # Get interactive verdict
-                print("\n" + "="*70)
-                print(f"{step_num+1}. FINAL VERDICT (INTERACTIVE)")
-                print("="*70)
+                if not quiet:
+                    print("\n" + "="*70)
+                    print(f"{step_num+1}. FINAL VERDICT (INTERACTIVE)")
+                    print("="*70)
                 verdict_interactive = get_final_verdict(debate_interactive)
 
                 winner_answer_interactive = debate_interactive.debater_a_answer if verdict_interactive['winner'] == 'A' else debate_interactive.debater_b_answer
                 is_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if verdict_interactive['winner'] else None
-                print(f"\nWinner: Debater {verdict_interactive['winner']}")
-                print(f"Selected Answer: {winner_answer_interactive}")
-                print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
+                if not quiet:
+                    print(f"\nWinner: Debater {verdict_interactive['winner']}")
+                    print(f"Selected Answer: {winner_answer_interactive}")
+                    print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
                 
                 # Write interactive verdict to file immediately
                 append_interactive_verdict_to_file(text_file, verdict_interactive, debate_interactive, question_data)
@@ -1368,14 +1374,15 @@ def main():
 
         # Run non-interactive debate if enabled
         if run_non_interactive:
-            print(f"\n{step_num}. Running LLM-judged debate (NON-INTERACTIVE)...")
+            if not quiet:
+                print(f"\n{step_num}. Running LLM-judged debate (NON-INTERACTIVE)...")
             try:
                 debate_non_interactive = LLMJudgeDebate(
                     question_data['question'],
                     question_data['debater_a_answer'],
                     question_data['debater_b_answer'],
-                    max_turns=args.max_turns,
-                    verbose=not args.quiet,
+                    max_turns=max_turns,
+                    verbose=not quiet,
                     interactive=False,
                     debate_style=DEBATE_STYLE
                 )
@@ -1385,16 +1392,18 @@ def main():
                 append_non_interactive_debate_to_file(text_file, debate_non_interactive)
 
                 # Get non-interactive verdict
-                print("\n" + "="*70)
-                print(f"{step_num+1}. FINAL VERDICT (NON-INTERACTIVE)")
-                print("="*70)
+                if not quiet:
+                    print("\n" + "="*70)
+                    print(f"{step_num+1}. FINAL VERDICT (NON-INTERACTIVE)")
+                    print("="*70)
                 verdict_non_interactive = get_final_verdict(debate_non_interactive)
 
                 winner_answer_non_interactive = debate_non_interactive.debater_a_answer if verdict_non_interactive['winner'] == 'A' else debate_non_interactive.debater_b_answer
                 is_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if verdict_non_interactive['winner'] else None
-                print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
-                print(f"Selected Answer: {winner_answer_non_interactive}")
-                print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
+                if not quiet:
+                    print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
+                    print(f"Selected Answer: {winner_answer_non_interactive}")
+                    print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
                 
                 # Write non-interactive verdict to file immediately
                 append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, debate_non_interactive, question_data)
@@ -1441,23 +1450,32 @@ def main():
             else:
                 summary += f"Judge After Non-Interactive Debate: ERROR (debate failed)\n"
 
-        print(f"\n{summary}")
+        if not quiet:
+            print(f"\n{summary}")
         
         # Write summary to file immediately
         append_summary_to_file(text_file, summary)
 
         # Save results to JSONL
-        print(f"{step_num}. Saving results...")
+        if not quiet:
+            print(f"{step_num}. Saving results...")
         jsonl_file = save_results_to_jsonl(question_data, debater_qa, judge_qa, 
                                            debate_interactive, verdict_interactive, 
                                            debate_non_interactive, verdict_non_interactive,
-                                           args.output_dir, args.run_id, 
-                                           jsonl_filename=args.jsonl_filename)
-        print(f"   Run ID: {args.run_id}")
-        print(f"   JSONL: {jsonl_file}")
-        print(f"   Details: {text_file}")
-
-        print("\nDone!")
+                                           output_dir, run_id, 
+                                           jsonl_filename=jsonl_filename)
+        if not quiet:
+            print(f"   Run ID: {run_id}")
+            print(f"   JSONL: {jsonl_file}")
+            print(f"   Details: {text_file}")
+            print("\nDone!")
+        
+        return {
+            'run_id': run_id,
+            'jsonl_file': str(jsonl_file),
+            'text_file': str(text_file),
+            'question_idx': actual_question_idx
+        }
         
     except Exception as e:
         # Log error to detail file
@@ -1479,9 +1497,46 @@ def main():
         except Exception as write_error:
             print(f"Failed to write error to file: {write_error}")
         
-        # Re-raise the exception to ensure non-zero exit code
+        # Re-raise the exception
         raise
 
 
+def main():
+    """CLI entry point for running a single debate."""
+    parser = argparse.ArgumentParser(
+        description='Run a single debate experiment. NOTE: Use run_parallel_debates.py instead (even with --num-debates 1).'
+    )
+    parser.add_argument('--output-dir', type=str, default='./single_debate_runs',
+                        help='Output directory for results')
+    parser.add_argument('--question-idx', type=int, default=None,
+                        help='Question index to use (passed from parallel runner, None = random)')
+    parser.add_argument('--master-seed', type=int, default=None,
+                        help='Master seed from parallel runner, for logging only')
+    parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
+                        help='Maximum number of debate turns')
+    parser.add_argument('--quiet', action='store_true',
+                        help='Suppress verbose output')
+    parser.add_argument('--run-id', type=str, default=None,
+                        help='Unique run identifier (auto-generated if not provided)')
+    parser.add_argument('--jsonl-filename', type=str, default=None,
+                        help='JSONL filename to append results to (default: master_results.jsonl)')
+
+    args = parser.parse_args()
+    
+    try:
+        result = run_single_debate_logic(
+            output_dir=args.output_dir,
+            question_idx=args.question_idx,
+            master_seed=args.master_seed,
+            max_turns=args.max_turns,
+            quiet=args.quiet,
+            run_id=args.run_id,
+            jsonl_filename=args.jsonl_filename
+        )
+        return 0
+    except Exception:
+        return 1
+
+
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

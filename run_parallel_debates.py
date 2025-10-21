@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
 """
-Run multiple debates in parallel.
+Run multiple debates in parallel using threading.
 
-This script orchestrates multiple instances of run_single_debate.py,
-allowing you to run debates simultaneously with separate log files
-and aggregated results.
+This script orchestrates multiple debate instances using threading for efficient
+I/O-bound parallel execution (LLM API calls).
 """
 
 import os
 import sys
-import subprocess
 import argparse
 import time
 import json
@@ -17,65 +15,51 @@ import random
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
-import glob
+import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from datasets import load_dataset
 from config import MAX_TURNS_DEFAULT, MASTER_SEED, DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
+from run_single_debate import run_single_debate_logic
 
 
-def run_single_debate_process(debate_id: int, output_dir: str, jsonl_filename: str, question_idx: int = None, 
-                               max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = False, 
-                               master_seed: int = None) -> subprocess.Popen:
+def run_single_debate_thread(debate_id: int, output_dir: str, jsonl_filename: str, question_idx: int = None, 
+                             max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = True, 
+                             master_seed: int = None) -> Dict:
     """
-    Launch a single debate as a subprocess.
+    Run a single debate in a thread.
     
     Args:
         debate_id: Unique identifier for this debate instance
         output_dir: Directory for output files
+        jsonl_filename: JSONL filename for results
         question_idx: Question index to use (None = random)
         max_turns: Maximum debate turns
-        quiet: Suppress verbose output in the subprocess
+        quiet: Suppress verbose output (default True for threading)
         master_seed: Master seed for logging
         
     Returns:
-        subprocess.Popen object
+        Dict with run results
     """
-    # Generate unique run identifier
-    import uuid
-    run_id = str(uuid.uuid4())[:8]  # Short UUID for readability
+    run_id = str(uuid.uuid4())[:8]
     
-    # Build command
-    cmd = [
-        sys.executable,  # Use same Python interpreter
-        '-u',  # Unbuffered output for real-time logging
-        'run_single_debate.py',
-        '--output-dir', output_dir,
-        '--jsonl-filename', jsonl_filename,
-        '--max-turns', str(max_turns),
-        '--run-id', run_id,  # Pass unique identifier
-    ]
-    
-    if question_idx is not None:
-        cmd.extend(['--question-idx', str(question_idx)])
-    
-    if master_seed is not None:
-        cmd.extend(['--master-seed', str(master_seed)])
-    
-    if quiet:
-        cmd.append('--quiet')
-    
-    # Launch process with output redirected to devnull (we save everything in log files)
     print(f"[run_id: {run_id}] Starting...")
     
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,  # Errors are logged to detail files
-        text=True,
-        bufsize=1  # Line buffered
-    )
-    
-    return process, run_id
+    try:
+        result = run_single_debate_logic(
+            output_dir=output_dir,
+            question_idx=question_idx,
+            master_seed=master_seed,
+            max_turns=max_turns,
+            quiet=quiet,
+            run_id=run_id,
+            jsonl_filename=jsonl_filename
+        )
+        print(f"[run_id: {run_id}] ✓ Completed")
+        return result
+    except Exception as e:
+        print(f"[run_id: {run_id}] ✗ Failed: {e}")
+        raise
 
 
 def print_aggregate_stats(master_jsonl: str):
@@ -130,9 +114,9 @@ def print_debate_progress_hint():
     print("\n" + "="*70)
     print("MONITORING DEBATES")
     print("="*70)
-    print("Debates are running in the background.")
-    print("Results are saved to debate_detail_*.txt files as they complete.")
-    print("Use --wait flag to wait for completion and see aggregate statistics.")
+    print("Debates are running via threading (efficient for I/O-bound LLM calls).")
+    print("Results are saved to log_*.txt files as they complete.")
+    print("The script will wait for all debates to finish.")
     print("="*70)
 
 
@@ -252,88 +236,55 @@ Examples:
     
     # Note: No need to backup individual JSONL since each run has its own folder
     
-    # Launch debate processes in batches
-    all_processes = []
-    debates_to_run = list(range(args.num_debates))
+    # Print monitoring hints
+    print_debate_progress_hint()
     
-    # Process debates in batches
-    while debates_to_run:
-        # Launch next batch
-        batch = debates_to_run[:max_concurrent]
-        debates_to_run = debates_to_run[max_concurrent:]
-        
-        batch_processes = []
-        for i in batch:
+    # Remove auto-monitor functionality
+    if args.auto_monitor:
+        print("\nNote: --auto-monitor flag is deprecated.")
+        print("Results are saved to log_*.txt files as debates complete.")
+    
+    # Run debates using ThreadPoolExecutor
+    print("\nStarting debates...")
+    print("(This may take several minutes)")
+    print()
+    
+    with ThreadPoolExecutor(max_workers=max_concurrent) as executor:
+        # Submit all debate tasks
+        futures = []
+        for i in range(args.num_debates):
             question_idx = question_indices[i] if question_indices else None
-            process, run_id = run_single_debate_process(
+            future = executor.submit(
+                run_single_debate_thread,
                 debate_id=i+1,
                 output_dir=run_output_dir,
-                jsonl_filename=Path(master_jsonl).name,  # Just the filename, not full path
+                jsonl_filename=Path(master_jsonl).name,
                 question_idx=question_idx,
                 max_turns=args.max_turns,
                 quiet=args.quiet,
                 master_seed=args.seed
             )
-            batch_processes.append((run_id, process))
+            futures.append(future)
         
-        all_processes.extend(batch_processes)
+        if not args.wait:
+            print("\nDebates are running in the background (via threads).")
+            print("\nNote: With threading, debates run in the same process.")
+            print("You can monitor progress by checking log_*.txt files.")
+            # Note: Can't return early with threading as easily, so we wait
         
-        # If we have more batches to run, wait for this batch to complete
-        if debates_to_run:
-            print(f"\nWaiting for batch of {len(batch_processes)} debates to complete before starting next batch...")
-            batch_completed = [False] * len(batch_processes)
-            
-            while not all(batch_completed):
-                for idx, (run_id, process) in enumerate(batch_processes):
-                    if not batch_completed[idx]:
-                        retcode = process.poll()
-                        if retcode is not None:
-                            batch_completed[idx] = True
-                            if retcode == 0:
-                                print(f"[run_id: {run_id}] ✓ Completed")
-                            else:
-                                print(f"[run_id: {run_id}] ✗ Failed (exit code {retcode})")
-                
-                if not all(batch_completed):
-                    time.sleep(1)
-            
-            print(f"Batch complete. {len(debates_to_run)} debates remaining.")
-    
-    processes = all_processes
-    
-    # Print monitoring hints
-    print_debate_progress_hint()
-    
-    # Remove auto-monitor functionality since we no longer have log files
-    if args.auto_monitor:
-        print("\nNote: --auto-monitor flag is deprecated (log files removed for efficiency).")
-        print("Results are saved to debate_detail_*.txt files as debates complete.")
-    
-    if not args.wait:
-        print("\nDebates are running in the background.")
-        print("\nTo wait for completion and see aggregated results, re-run with --wait flag")
-        return
-    
-    # Wait for all processes to complete
-    print("\nWaiting for all debates to complete...")
-    print("(This may take several minutes)")
-    print()
-    
-    completed = [False] * len(processes)
-    
-    while not all(completed):
-        for idx, (run_id, process) in enumerate(processes):
-            if not completed[idx]:
-                retcode = process.poll()
-                if retcode is not None:
-                    completed[idx] = True
-                    if retcode == 0:
-                        print(f"[run_id: {run_id}] ✓ Completed successfully")
-                    else:
-                        print(f"[run_id: {run_id}] ✗ Failed with exit code {retcode}. Check log_{run_id}.txt for details.")
+        # Wait for all debates to complete
+        completed_count = 0
+        failed_count = 0
         
-        if not all(completed):
-            time.sleep(1)
+        for future in as_completed(futures):
+            try:
+                result = future.result()
+                completed_count += 1
+            except Exception as e:
+                failed_count += 1
+                print(f"Debate failed with error: {e}")
+        
+        print(f"\nCompleted: {completed_count}, Failed: {failed_count}")
     
     print("\n" + "="*70)
     print("All debates completed!")
@@ -346,12 +297,12 @@ Examples:
     print("\nGenerated files:")
     print(f"  Results JSONL: {master_jsonl}")
     
-    # List detail files
-    detail_files = sorted(Path(run_output_dir).glob('debate_detail_*.txt'))
-    if detail_files:
-        print(f"  Detail files ({len(detail_files)}):")
-        for detail_file in detail_files[-args.num_debates:]:  # Show only recent ones
-            print(f"    {detail_file}")
+    # List log files
+    log_files = sorted(Path(run_output_dir).glob('log_*.txt'))
+    if log_files:
+        print(f"  Log files ({len(log_files)}):")
+        for log_file in log_files[-min(10, args.num_debates):]:  # Show up to 10 recent ones
+            print(f"    {log_file}")
     
     print("\nDone!")
 

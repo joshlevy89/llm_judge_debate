@@ -10,14 +10,14 @@ used across the debate system.
 # DEBATE_MODEL = 'gpt-4o-mini'
 # JUDGE_MODEL = 'gpt-4o-mini'
 
-# DEBATE_MODEL = 'gemini-2.5-flash'
-# JUDGE_MODEL = 'gpt-4o-mini'
+DEBATE_MODEL = 'gemini-2.5-flash'
+JUDGE_MODEL = 'gpt-4o-mini'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gemini-2.5-flash'
 
-DEBATE_MODEL = 'gemini-2.5-flash'
-JUDGE_MODEL = 'gpt-3.5-turbo'
+# DEBATE_MODEL = 'gemini-2.5-flash'
+# JUDGE_MODEL = 'gpt-3.5-turbo'
 
 # Temperature settings
 DIRECT_QA_TEMPERATURE = 0.0  # Temperature for initial direct QA tests
@@ -34,7 +34,7 @@ MAX_TURNS_DEFAULT = 20  # Default maximum number of debate turns
 DEBATER_WORD_LIMIT = 200  # Maximum words per debater response
 
 # Debate mode configuration
-DEBATE_MODE = 'interactive'  # Options: 'interactive', 'non_interactive', or 'both'
+DEBATE_MODE = 'non_interactive'  # Options: 'interactive', 'non_interactive', or 'both'
 # - 'interactive': Judge can ask clarifying questions to debaters
 # - 'non_interactive': Judge can only say 'next' or 'end'
 # - 'both': Run both modes for comparison (doubles execution time)
