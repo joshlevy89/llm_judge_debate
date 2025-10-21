@@ -935,6 +935,37 @@ def append_error_to_file(text_file, error_info):
         f.write("\n")
 
 
+def append_partial_debate_with_error(text_file, debate_obj, error_info, step_num, mode='interactive'):
+    """Append partial debate transcript and error when debate fails.
+    
+    Args:
+        text_file: Path to the debate detail text file
+        debate_obj: LLMJudgeDebate object (may be partially completed)
+        error_info: Error information string
+        step_num: Step number for display
+        mode: 'interactive' or 'non_interactive'
+    """
+    mode_label = mode.upper().replace('_', '-')
+    with open(text_file, 'a', encoding='utf-8') as f:
+        f.write("="*80 + "\n")
+        f.write(f"{step_num}. LLM-JUDGED DEBATE ({mode_label}) - INCOMPLETE DUE TO ERROR\n")
+        f.write("="*80 + "\n")
+        f.write(f"Debater A arguing for: {debate_obj.debater_a_answer}\n")
+        f.write(f"Debater B arguing for: {debate_obj.debater_b_answer}\n")
+        f.write(f"Turns completed before error: {debate_obj.turn_count}\n\n")
+        f.write("Debate Transcript (up to error):\n")
+        if debate_obj.history:
+            f.write(debate_obj.history)
+        else:
+            f.write("(No debate history - error occurred before any turns completed)\n")
+        f.write("\n\n")
+        f.write("="*80 + "\n")
+        f.write("ERROR OCCURRED DURING DEBATE\n")
+        f.write("="*80 + "\n")
+        f.write(error_info)
+        f.write("\n")
+
+
 def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactive, verdict_interactive, 
                           debate_non_interactive, verdict_non_interactive, output_dir, run_id, jsonl_filename=None):
     """Save results to JSONL (JSON Lines) file with flexible schema.
@@ -1224,66 +1255,106 @@ def main():
         # Run interactive debate if enabled
         if run_interactive:
             print(f"\n{step_num}. Running LLM-judged debate (INTERACTIVE)...")
-            debate_interactive = LLMJudgeDebate(
-                question_data['question'],
-                question_data['debater_a_answer'],
-                question_data['debater_b_answer'],
-                max_turns=args.max_turns,
-                verbose=not args.quiet,
-                interactive=True
-            )
-            debate_interactive.run_debate()
-            
-            # Write interactive debate to file immediately
-            append_interactive_debate_to_file(text_file, debate_interactive)
+            try:
+                debate_interactive = LLMJudgeDebate(
+                    question_data['question'],
+                    question_data['debater_a_answer'],
+                    question_data['debater_b_answer'],
+                    max_turns=args.max_turns,
+                    verbose=not args.quiet,
+                    interactive=True
+                )
+                debate_interactive.run_debate()
+                
+                # Write interactive debate to file immediately
+                append_interactive_debate_to_file(text_file, debate_interactive)
 
-            # Get interactive verdict
-            print("\n" + "="*70)
-            print(f"{step_num+1}. FINAL VERDICT (INTERACTIVE)")
-            print("="*70)
-            verdict_interactive = get_final_verdict(debate_interactive)
+                # Get interactive verdict
+                print("\n" + "="*70)
+                print(f"{step_num+1}. FINAL VERDICT (INTERACTIVE)")
+                print("="*70)
+                verdict_interactive = get_final_verdict(debate_interactive)
 
-            winner_answer_interactive = debate_interactive.debater_a_answer if verdict_interactive['winner'] == 'A' else debate_interactive.debater_b_answer
-            is_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if verdict_interactive['winner'] else None
-            print(f"\nWinner: Debater {verdict_interactive['winner']}")
-            print(f"Selected Answer: {winner_answer_interactive}")
-            print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
-            
-            # Write interactive verdict to file immediately
-            append_interactive_verdict_to_file(text_file, verdict_interactive, debate_interactive, question_data)
+                winner_answer_interactive = debate_interactive.debater_a_answer if verdict_interactive['winner'] == 'A' else debate_interactive.debater_b_answer
+                is_correct_interactive = (winner_answer_interactive == question_data['correct_answer']) if verdict_interactive['winner'] else None
+                print(f"\nWinner: Debater {verdict_interactive['winner']}")
+                print(f"Selected Answer: {winner_answer_interactive}")
+                print(f"Result: {'CORRECT' if is_correct_interactive else 'INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)")
+                
+                # Write interactive verdict to file immediately
+                append_interactive_verdict_to_file(text_file, verdict_interactive, debate_interactive, question_data)
+                
+            except Exception as e:
+                error_info = f"Error occurred at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                error_info += f"Exception type: {type(e).__name__}\n"
+                error_info += f"Exception message: {str(e)}\n\n"
+                error_info += "Traceback:\n"
+                error_info += traceback.format_exc()
+                
+                print(f"\n{'='*70}")
+                print("ERROR OCCURRED DURING INTERACTIVE DEBATE")
+                print(f"{'='*70}")
+                print(error_info)
+                
+                append_partial_debate_with_error(text_file, debate_interactive, error_info, step_num, mode='interactive')
+                
+                debate_interactive = None
+                verdict_interactive = None
+                is_correct_interactive = None
+                print("\nContinuing with null values for interactive debate results...")
             
             step_num += 2
 
         # Run non-interactive debate if enabled
         if run_non_interactive:
             print(f"\n{step_num}. Running LLM-judged debate (NON-INTERACTIVE)...")
-            debate_non_interactive = LLMJudgeDebate(
-                question_data['question'],
-                question_data['debater_a_answer'],
-                question_data['debater_b_answer'],
-                max_turns=args.max_turns,
-                verbose=not args.quiet,
-                interactive=False
-            )
-            debate_non_interactive.run_debate()
-            
-            # Write non-interactive debate to file immediately
-            append_non_interactive_debate_to_file(text_file, debate_non_interactive)
+            try:
+                debate_non_interactive = LLMJudgeDebate(
+                    question_data['question'],
+                    question_data['debater_a_answer'],
+                    question_data['debater_b_answer'],
+                    max_turns=args.max_turns,
+                    verbose=not args.quiet,
+                    interactive=False
+                )
+                debate_non_interactive.run_debate()
+                
+                # Write non-interactive debate to file immediately
+                append_non_interactive_debate_to_file(text_file, debate_non_interactive)
 
-            # Get non-interactive verdict
-            print("\n" + "="*70)
-            print(f"{step_num+1}. FINAL VERDICT (NON-INTERACTIVE)")
-            print("="*70)
-            verdict_non_interactive = get_final_verdict(debate_non_interactive)
+                # Get non-interactive verdict
+                print("\n" + "="*70)
+                print(f"{step_num+1}. FINAL VERDICT (NON-INTERACTIVE)")
+                print("="*70)
+                verdict_non_interactive = get_final_verdict(debate_non_interactive)
 
-            winner_answer_non_interactive = debate_non_interactive.debater_a_answer if verdict_non_interactive['winner'] == 'A' else debate_non_interactive.debater_b_answer
-            is_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if verdict_non_interactive['winner'] else None
-            print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
-            print(f"Selected Answer: {winner_answer_non_interactive}")
-            print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
-            
-            # Write non-interactive verdict to file immediately
-            append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, debate_non_interactive, question_data)
+                winner_answer_non_interactive = debate_non_interactive.debater_a_answer if verdict_non_interactive['winner'] == 'A' else debate_non_interactive.debater_b_answer
+                is_correct_non_interactive = (winner_answer_non_interactive == question_data['correct_answer']) if verdict_non_interactive['winner'] else None
+                print(f"\nWinner: Debater {verdict_non_interactive['winner']}")
+                print(f"Selected Answer: {winner_answer_non_interactive}")
+                print(f"Result: {'CORRECT' if is_correct_non_interactive else 'INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)")
+                
+                # Write non-interactive verdict to file immediately
+                append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, debate_non_interactive, question_data)
+                
+            except Exception as e:
+                error_info = f"Error occurred at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
+                error_info += f"Exception type: {type(e).__name__}\n"
+                error_info += f"Exception message: {str(e)}\n\n"
+                error_info += "Traceback:\n"
+                error_info += traceback.format_exc()
+                
+                print(f"\n{'='*70}")
+                print("ERROR OCCURRED DURING NON-INTERACTIVE DEBATE")
+                print(f"{'='*70}")
+                print(error_info)
+                
+                append_partial_debate_with_error(text_file, debate_non_interactive, error_info, step_num, mode='non_interactive')
+                
+                debate_non_interactive = None
+                verdict_non_interactive = None
+                is_correct_non_interactive = None
+                print("\nContinuing with null values for non-interactive debate results...")
             
             step_num += 2
 
@@ -1298,9 +1369,15 @@ def main():
         summary += f"Judge Direct QA: {'✓ CORRECT' if judge_qa['is_correct'] else '✗ INCORRECT'} (Confidence: {judge_qa.get('confidence')}%)\n"
         
         if run_interactive:
-            summary += f"Judge After Interactive Debate: {'✓ CORRECT' if is_correct_interactive else '✗ INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)\n"
+            if verdict_interactive is not None:
+                summary += f"Judge After Interactive Debate: {'✓ CORRECT' if is_correct_interactive else '✗ INCORRECT'} (Confidence: {verdict_interactive.get('confidence')}%)\n"
+            else:
+                summary += f"Judge After Interactive Debate: ERROR (debate failed)\n"
         if run_non_interactive:
-            summary += f"Judge After Non-Interactive Debate: {'✓ CORRECT' if is_correct_non_interactive else '✗ INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)\n"
+            if verdict_non_interactive is not None:
+                summary += f"Judge After Non-Interactive Debate: {'✓ CORRECT' if is_correct_non_interactive else '✗ INCORRECT'} (Confidence: {verdict_non_interactive.get('confidence')}%)\n"
+            else:
+                summary += f"Judge After Non-Interactive Debate: ERROR (debate failed)\n"
 
         print(f"\n{summary}")
         
