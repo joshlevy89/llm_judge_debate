@@ -98,25 +98,27 @@ def print_aggregate_stats(master_jsonl: str):
     has_non_interactive = any('non_interactive' in r.get('modes', {}) for r in results)
     
     total = len(results)
-    debater_correct = sum(1 for r in results if r.get('debater_direct', {}).get('correct'))
-    judge_direct_correct = sum(1 for r in results if r.get('judge_direct', {}).get('correct'))
+    
+    debater_direct_results = [r for r in results if r.get('debater_direct') is not None]
+    debater_correct = sum(1 for r in debater_direct_results if r['debater_direct'].get('correct'))
+    
+    judge_direct_results = [r for r in results if r.get('judge_direct') is not None]
+    judge_direct_correct = sum(1 for r in judge_direct_results if r['judge_direct'].get('correct'))
     
     print("\n" + "="*70)
     print("AGGREGATE STATISTICS")
     print("="*70)
     print(f"Total debates: {total}")
-    print(f"Debater direct QA accuracy: {debater_correct}/{total} ({100*debater_correct/total:.1f}%)")
-    print(f"Judge direct QA accuracy: {judge_direct_correct}/{total} ({100*judge_direct_correct/total:.1f}%)")
+    print(f"Debater direct QA accuracy: {debater_correct}/{len(debater_direct_results)} ({100*debater_correct/len(debater_direct_results):.1f}%)")
+    print(f"Judge direct QA accuracy: {judge_direct_correct}/{len(judge_direct_results)} ({100*judge_direct_correct/len(judge_direct_results):.1f}%)")
     
     if has_interactive:
-        # Count results that have interactive mode
-        interactive_results = [r for r in results if 'interactive' in r.get('modes', {})]
+        interactive_results = [r for r in results if r.get('modes', {}).get('interactive') is not None]
         interactive_correct = sum(1 for r in interactive_results if r['modes']['interactive'].get('correct'))
         print(f"Judge after interactive debate accuracy: {interactive_correct}/{len(interactive_results)} ({100*interactive_correct/len(interactive_results):.1f}%)")
     
     if has_non_interactive:
-        # Count results that have non-interactive mode
-        non_interactive_results = [r for r in results if 'non_interactive' in r.get('modes', {})]
+        non_interactive_results = [r for r in results if r.get('modes', {}).get('non_interactive') is not None]
         non_interactive_correct = sum(1 for r in non_interactive_results if r['modes']['non_interactive'].get('correct'))
         print(f"Judge after non-interactive debate accuracy: {non_interactive_correct}/{len(non_interactive_results)} ({100*non_interactive_correct/len(non_interactive_results):.1f}%)")
     
