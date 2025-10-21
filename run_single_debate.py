@@ -36,7 +36,7 @@ from config import (
     MAX_RETRIES, RETRY_BASE_WAIT, API_TIMEOUT,
     MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT,
     USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE, BASELINE_CACHE_DIR,
-    DEBATE_MODE,
+    DEBATE_MODE, DEBATE_STYLE,
     DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT,
     MASTER_SEED
 )
@@ -434,7 +434,10 @@ Do not provide explanations or commentary - just the action."""
 class LLMJudgeDebate:
     """Manages an LLM-judged debate."""
 
-    def __init__(self, question, debater_a_answer, debater_b_answer, max_turns=MAX_TURNS_DEFAULT, verbose=True, interactive=True):
+    def __init__(self, question, debater_a_answer, debater_b_answer, max_turns=MAX_TURNS_DEFAULT, verbose=True, interactive=True, debate_style='sequential'):
+        if debate_style == 'simultaneous' and interactive:
+            raise ValueError("Simultaneous debate style does not support interactive mode. Please use debate_style='sequential' or interactive=False.")
+        
         self.question = question
         self.debater_a_answer = debater_a_answer
         self.debater_b_answer = debater_b_answer
@@ -444,6 +447,7 @@ class LLMJudgeDebate:
         self.max_turns = max_turns
         self.turn_count = 0
         self.interactive = interactive
+        self.debate_style = debate_style
         self.judge_prompt = create_judge_prompt() if interactive else self.create_non_interactive_judge_prompt()
         self.verbose = verbose
 
@@ -517,35 +521,89 @@ What is your next action?"""
 
     def next_turn(self, debater=None):
         """Run the next debate turn."""
-        if debater:
-            self.current_turn = debater
-        elif self.last_speaker:
-            self.current_turn = 'B' if self.last_speaker == 'A' else 'A'
-
-        if self.verbose:
-            print(f"\n{'─'*70}")
-            print(f"DEBATER {self.current_turn} (Turn {self.turn_count + 1})")
-            print('─'*70)
-
-        try:
-            argument = debate_round(
-                self.question,
-                self.debater_a_answer,
-                self.debater_b_answer,
-                self.history,
-                self.current_turn
-            )
+        if self.debate_style == 'simultaneous':
+            if debater:
+                raise ValueError("Cannot specify debater in simultaneous mode - both debaters respond each turn")
+            
+            # In simultaneous mode, both A and B respond to the same history
+            history_snapshot = self.history
+            
+            # Get A's response
+            if self.verbose:
+                print(f"\n{'─'*70}")
+                print(f"DEBATER A (Turn {self.turn_count + 1})")
+                print('─'*70)
+            
+            try:
+                argument_a = debate_round(
+                    self.question,
+                    self.debater_a_answer,
+                    self.debater_b_answer,
+                    history_snapshot,
+                    'A'
+                )
+                if self.verbose:
+                    print(argument_a)
+            except Exception as e:
+                print(f"Error in debater A turn: {e}")
+                raise
+            
+            # Get B's response using the SAME history
+            if self.verbose:
+                print(f"\n{'─'*70}")
+                print(f"DEBATER B (Turn {self.turn_count + 1})")
+                print('─'*70)
+            
+            try:
+                argument_b = debate_round(
+                    self.question,
+                    self.debater_a_answer,
+                    self.debater_b_answer,
+                    history_snapshot,
+                    'B'
+                )
+                if self.verbose:
+                    print(argument_b)
+            except Exception as e:
+                print(f"Error in debater B turn: {e}")
+                raise
+            
+            # Add both responses to history
+            self.add_to_history(f"Debater A", argument_a)
+            self.add_to_history(f"Debater B", argument_b)
+            self.last_speaker = 'B'
+            self.turn_count += 1
+            
+        else:  # sequential mode
+            if debater:
+                self.current_turn = debater
+            elif self.last_speaker:
+                self.current_turn = 'B' if self.last_speaker == 'A' else 'A'
 
             if self.verbose:
-                print(argument)
+                print(f"\n{'─'*70}")
+                print(f"DEBATER {self.current_turn} (Turn {self.turn_count + 1})")
+                print('─'*70)
 
-            self.add_to_history(f"Debater {self.current_turn}", argument)
-            self.last_speaker = self.current_turn
-            self.turn_count += 1
+            try:
+                argument = debate_round(
+                    self.question,
+                    self.debater_a_answer,
+                    self.debater_b_answer,
+                    self.history,
+                    self.current_turn
+                )
 
-        except Exception as e:
-            print(f"Error in debater turn: {e}")
-            raise
+                if self.verbose:
+                    print(argument)
+
+                self.add_to_history(f"Debater {self.current_turn}", argument)
+                self.last_speaker = self.current_turn
+                self.turn_count += 1
+
+            except Exception as e:
+                print(f"Error in debater turn: {e}")
+                raise
 
     def execute_action(self, action_str):
         """Execute the judge's action."""
@@ -586,7 +644,8 @@ What is your next action?"""
         if self.verbose:
             print("\n" + "="*70)
             debate_type = "INTERACTIVE" if self.interactive else "NON-INTERACTIVE"
-            print(f"LLM-JUDGED DEBATE ({debate_type})")
+            style_type = self.debate_style.upper()
+            print(f"LLM-JUDGED DEBATE ({debate_type}, {style_type})")
             print("="*70)
             print(f"Question: {self.question}")
             print(f"Debater A arguing for: {self.debater_a_answer}")
@@ -704,7 +763,8 @@ def save_config(output_dir, max_turns_used=None, master_seed=None, quiet=False, 
             "max_turns_default": MAX_TURNS_DEFAULT,
             "max_turns_overridden": max_turns_used is not None and max_turns_used != MAX_TURNS_DEFAULT,
             "debater_word_limit": DEBATER_WORD_LIMIT,
-            "debate_mode": DEBATE_MODE
+            "debate_mode": DEBATE_MODE,
+            "debate_style": DEBATE_STYLE
         },
         "dataset_configuration": {
             "dataset_name": DATASET_NAME,
@@ -1262,7 +1322,8 @@ def main():
                     question_data['debater_b_answer'],
                     max_turns=args.max_turns,
                     verbose=not args.quiet,
-                    interactive=True
+                    interactive=True,
+                    debate_style=DEBATE_STYLE
                 )
                 debate_interactive.run_debate()
                 
@@ -1315,7 +1376,8 @@ def main():
                     question_data['debater_b_answer'],
                     max_turns=args.max_turns,
                     verbose=not args.quiet,
-                    interactive=False
+                    interactive=False,
+                    debate_style=DEBATE_STYLE
                 )
                 debate_non_interactive.run_debate()
                 

@@ -10,14 +10,14 @@ used across the debate system.
 # DEBATE_MODEL = 'gpt-4o-mini'
 # JUDGE_MODEL = 'gpt-4o-mini'
 
-DEBATE_MODEL = 'gemini-2.5-flash'
-JUDGE_MODEL = 'gpt-4o-mini'
+# DEBATE_MODEL = 'gemini-2.5-flash'
+# JUDGE_MODEL = 'gpt-4o-mini'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gemini-2.5-flash'
 
-# DEBATE_MODEL = 'gemini-2.5-flash'
-# JUDGE_MODEL = 'gpt-3.5-turbo'
+DEBATE_MODEL = 'gemini-2.5-flash'
+JUDGE_MODEL = 'gpt-3.5-turbo'
 
 # Temperature settings
 DIRECT_QA_TEMPERATURE = 0.0  # Temperature for initial direct QA tests
@@ -30,14 +30,20 @@ RETRY_BASE_WAIT = 2  # Base wait time in seconds for exponential backoff
 API_TIMEOUT = 120  # Timeout in seconds for API calls (2 minutes) - NOTE: Converted to ms for Gemini
 
 # Debate limits
-MAX_TURNS_DEFAULT = 1  # Default maximum number of debate turns
+MAX_TURNS_DEFAULT = 20  # Default maximum number of debate turns
 DEBATER_WORD_LIMIT = 200  # Maximum words per debater response
 
 # Debate mode configuration
-DEBATE_MODE = 'non_interactive'  # Options: 'interactive', 'non_interactive', or 'both'
+DEBATE_MODE = 'interactive'  # Options: 'interactive', 'non_interactive', or 'both'
 # - 'interactive': Judge can ask clarifying questions to debaters
 # - 'non_interactive': Judge can only say 'next' or 'end'
 # - 'both': Run both modes for comparison (doubles execution time)
+
+# Debate style configuration
+DEBATE_STYLE = 'sequential'  # Options: 'sequential' or 'simultaneous'
+# - 'sequential': A speaks, then B speaks with A's response in history (1 turn = 1 response)
+# - 'simultaneous': A and B both respond to same history (1 turn = both responses)
+# NOTE: 'simultaneous' mode does NOT support 'interactive' DEBATE_MODE
 
 # Baseline caching configuration
 USE_BASELINE_CACHE = True  # Check cache for existing direct QA results before running
