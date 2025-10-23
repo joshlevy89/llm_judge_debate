@@ -10,14 +10,14 @@ used across the debate system.
 # DEBATE_MODEL = 'gpt-4o-mini'
 # JUDGE_MODEL = 'gpt-4o-mini'
 
-# DEBATE_MODEL = 'gemini-2.5-flash'
-# JUDGE_MODEL = 'gpt-4o-mini'
+DEBATE_MODEL = 'gemini-2.5-flash'
+JUDGE_MODEL = 'gpt-4o-mini'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gemini-2.5-flash'
 
-DEBATE_MODEL = 'gemini-2.5-flash'
-JUDGE_MODEL = 'gpt-3.5-turbo'
+# DEBATE_MODEL = 'gemini-2.5-flash'
+# JUDGE_MODEL = 'gpt-3.5-turbo'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'claude-3-haiku-20240307'
@@ -31,8 +31,10 @@ JUDGE_MODEL = 'gpt-3.5-turbo'
 
 # Temperature settings
 DIRECT_QA_TEMPERATURE = 0.0  # Temperature for initial direct QA tests
-JUDGE_DECISION_TEMPERATURE = 0.7  # Temperature for judge's debate decisions
-FINAL_VERDICT_TEMPERATURE = 0.3  # Temperature for judge's final verdict
+# JUDGE_DECISION_TEMPERATURE = 0.7  # Temperature for judge's debate decisions
+# FINAL_VERDICT_TEMPERATURE = 0.3  # Temperature for judge's final verdict
+JUDGE_DECISION_TEMPERATURE = 0.0  # Temperature for judge's debate decisions
+FINAL_VERDICT_TEMPERATURE = 0.0  # Temperature for judge's final verdict
 
 # Retry configuration
 MAX_RETRIES = 2  # Maximum retry attempts for API calls (1 retry after initial attempt)
@@ -40,7 +42,7 @@ RETRY_BASE_WAIT = 2  # Base wait time in seconds for exponential backoff
 API_TIMEOUT = 120  # Timeout in seconds for API calls (2 minutes) - NOTE: Converted to ms for Gemini
 
 # Debate limits
-MAX_TURNS_DEFAULT = 20  # Default maximum number of debate turns
+MAX_TURNS_DEFAULT = 2  # Default maximum number of debate turns
 DEBATER_WORD_LIMIT = 200  # Maximum words per debater response
 
 # Debate mode configuration
@@ -70,7 +72,7 @@ DATASET_SPLIT = "train"
 # Random seed configuration
 # Run debates using run_parallel_debates.py (even for single debates with --num-debates 1)
 # Master seed controls which questions are sampled (without replacement) for all debates
-MASTER_SEED = 42  # Master seed for reproducibility (None = random question sampling)
+MASTER_SEED = 44  # Master seed for reproducibility (None = random question sampling)
 
 # Cache key includes: model name, question_idx, temperature, dataset info
 # This ensures cache is invalidated when models, datasets, or questions change
