@@ -76,7 +76,7 @@ DATASET_SPLIT = "train"
 # Random seed configuration
 # Run debates using run_parallel_debates.py (even for single debates with --num-debates 1)
 # Master seed controls which questions are sampled (without replacement) for all debates
-MASTER_SEED = 44  # Master seed for reproducibility (None = random question sampling)
+MASTER_SEED = 42  # Master seed for reproducibility (None = random question sampling)
 
 # Cache key includes: model name, question_idx, temperature, dataset info
 # This ensures cache is invalidated when models, datasets, or questions change
