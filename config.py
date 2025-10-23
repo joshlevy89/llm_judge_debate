@@ -47,6 +47,7 @@ API_TIMEOUT = 120  # Timeout in seconds for API calls (2 minutes) - NOTE: Conver
 # Debate limits
 MAX_TURNS_DEFAULT = 1  # Default maximum number of debate turns
 DEBATER_WORD_LIMIT = 200  # Maximum words per debater response
+NUM_CHOICES = 4  # Number of answer choices to use in debate (2-4 for GPQA)
 
 # Debate mode configuration
 DEBATE_MODE = 'non_interactive'  # Options: 'interactive', 'non_interactive', or 'both'
