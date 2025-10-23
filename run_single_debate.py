@@ -917,7 +917,6 @@ def append_interactive_verdict_to_file(text_file, verdict_interactive, debate_in
             f.write("\n[ERROR] Failed to parse winner from verdict response.\n")
             if verdict_interactive.get('error'):
                 f.write(f"Error: {verdict_interactive['error']}\n")
-            f.write(f"\nRaw Response:\n{verdict_interactive.get('raw_response', 'N/A')}\n")
         # f.write(f"\nFull Response:\n{verdict_interactive['raw_response']}\n\n")
 
 
@@ -974,7 +973,6 @@ def append_non_interactive_verdict_to_file(text_file, verdict_non_interactive, d
             f.write("\n[ERROR] Failed to parse winner from verdict response.\n")
             if verdict_non_interactive.get('error'):
                 f.write(f"Error: {verdict_non_interactive['error']}\n")
-            f.write(f"\nRaw Response:\n{verdict_non_interactive.get('raw_response', 'N/A')}\n")
         # f.write(f"\nFull Response:\n{verdict_non_interactive['raw_response']}\n\n")
 
 
@@ -1229,14 +1227,16 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
         debater_qa_output += f"Confidence: {debater_qa.get('confidence')}%\n"
         if debater_qa.get('reasoning'):
             debater_qa_output += f"Reasoning: {debater_qa['reasoning']}\n"
-        
+        # # Let's add the raw response to the output
+        # debater_qa_output += f"Raw Response:\n{debater_qa.get('raw_response', 'N/A')}\n"
+
         # Log errors or parsing failures
         if debater_qa.get('selected_letter') is None:
             print(f'[ERROR] Debater QA failed to parse response')
             debater_qa_output += f"\n[ERROR] Failed to parse response\n"
             if debater_qa.get('error'):
                 debater_qa_output += f"Error: {debater_qa['error']}\n"
-            debater_qa_output += f"Raw Response:\n{debater_qa.get('raw_response', 'N/A')}\n"
+            # debater_qa_output += f"Raw Response:\n{debater_qa.get('raw_response', 'N/A')}\n"
 
         if not quiet:
             print(debater_qa_output)
@@ -1296,6 +1296,8 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
         judge_qa_output += f"Confidence: {judge_qa.get('confidence')}%\n"
         if judge_qa.get('reasoning'):
             judge_qa_output += f"Reasoning: {judge_qa['reasoning']}\n"
+        # Add the raw response to the output
+        # judge_qa_output += f"Raw Response:\n{judge_qa.get('raw_response', 'N/A')}\n"
         
         # Log errors or parsing failures
         if judge_qa.get('selected_letter') is None:

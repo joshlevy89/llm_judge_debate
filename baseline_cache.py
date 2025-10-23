@@ -210,13 +210,14 @@ def save_qa_to_cache(question_idx: int, model_type: str, qa_result: Dict, option
         cache_data["metadata"]["dataset_subset"] = DATASET_SUBSET
         cache_data["metadata"]["dataset_split"] = DATASET_SPLIT
         
-        # Prepare result to cache (exclude raw_response to save space)
+        # Prepare result to cache
         cached_result = {
             "selected_letter": qa_result.get("selected_letter"),
             "selected_answer": qa_result.get("selected_answer"),
             "is_correct": qa_result.get("is_correct"),
             "confidence": qa_result.get("confidence"),
             "reasoning": qa_result.get("reasoning"),
+            "raw_response": qa_result.get("raw_response"),
             "temperature": DIRECT_QA_TEMPERATURE,
             "timestamp": datetime.now().isoformat()
         }
