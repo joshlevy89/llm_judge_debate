@@ -170,15 +170,17 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
                 raise
 
 
-def load_gpqa_question(question_idx=None, master_seed=None, num_choices=NUM_CHOICES):
-    """Load a GPQA diamond question with N answer choices.
+def load_question(question_idx=None, master_seed=None, num_choices=NUM_CHOICES):
+    """Load a question from the configured dataset with N answer choices.
+    
+    Supports: GPQA, MMLU-Pro
     
     Args:
         question_idx: If provided, loads that specific question index.
                      If None, selects randomly.
         master_seed: If provided with question_idx, seeds random operations
                     for reproducible choice selection and ordering.
-        num_choices: Number of answer choices to include in debate (2-4 for GPQA).
+        num_choices: Number of answer choices to include in debate.
                     If num_choices < total available, selects 1 correct + (num_choices-1) incorrect.
                     If num_choices == total available, uses all choices.
     
@@ -194,8 +196,9 @@ def load_gpqa_question(question_idx=None, master_seed=None, num_choices=NUM_CHOI
     
     question_data = dataset[random_idx]
 
-    # Extract question and all available answers
+    # Extract question and all available answers based on dataset format
     if 'Question' in question_data:
+        # GPQA format
         question = question_data['Question']
         correct_answer = question_data['Correct Answer']
         incorrect_answers = [
@@ -206,13 +209,27 @@ def load_gpqa_question(question_idx=None, master_seed=None, num_choices=NUM_CHOI
         incorrect_answers = [a for a in incorrect_answers if a]
         all_choices = [correct_answer] + incorrect_answers
         correct_idx_in_all = 0
-    elif 'question' in question_data:
+    elif 'question' in question_data and 'options' in question_data:
+        # MMLU-Pro or similar format
         question = question_data['question']
         all_choices = question_data['options']
-        correct_idx_in_all = question_data['answer']
+        
+        # Handle answer as either letter (e.g., "I") or index
+        if 'answer' in question_data:
+            answer_field = question_data['answer']
+            if isinstance(answer_field, str):
+                # Convert letter to index (A=0, B=1, ..., I=8, etc.)
+                correct_idx_in_all = ord(answer_field.upper()) - ord('A')
+            else:
+                correct_idx_in_all = answer_field
+        elif 'answer_index' in question_data:
+            correct_idx_in_all = question_data['answer_index']
+        else:
+            raise ValueError(f"No 'answer' or 'answer_index' field found in dataset")
+        
         correct_answer = all_choices[correct_idx_in_all]
     else:
-        raise ValueError(f"Unexpected GPQA format: {question_data.keys()}")
+        raise ValueError(f"Unexpected dataset format. Available fields: {question_data.keys()}")
 
     # Validate num_choices
     total_available = len(all_choices)
@@ -1276,8 +1293,8 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
         )
 
     if not quiet:
-        print("Loading GPQA question...")
-    question_data = load_gpqa_question(question_idx=question_idx, master_seed=master_seed)
+        print("Loading question...")
+    question_data = load_question(question_idx=question_idx, master_seed=master_seed)
     
     # Initialize debate detail file with header and question
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

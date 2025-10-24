@@ -10,14 +10,14 @@ used across the debate system.
 # DEBATE_MODEL = 'gpt-4o-mini'
 # JUDGE_MODEL = 'gpt-4o-mini'
 
-# DEBATE_MODEL = 'gemini-2.5-flash'
-# JUDGE_MODEL = 'gpt-4o-mini'
+DEBATE_MODEL = 'gemini-2.5-flash'
+JUDGE_MODEL = 'gpt-4o-mini'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'gemini-2.5-flash'
 
-DEBATE_MODEL = 'gemini-2.5-flash'
-JUDGE_MODEL = 'gpt-3.5-turbo'
+# DEBATE_MODEL = 'gemini-2.5-flash'
+# JUDGE_MODEL = 'gpt-3.5-turbo'
 
 # DEBATE_MODEL = 'gemini-2.5-flash'
 # JUDGE_MODEL = 'claude-3-haiku-20240307'
@@ -45,7 +45,7 @@ RETRY_BASE_WAIT = 2  # Base wait time in seconds for exponential backoff
 API_TIMEOUT = 120  # Timeout in seconds for API calls (2 minutes) - NOTE: Converted to ms for Gemini
 
 # Debate limits
-MAX_TURNS_DEFAULT = 1  # Default maximum number of debate turns
+MAX_TURNS_DEFAULT = 40  # Default maximum number of debate turns
 DEBATER_WORD_LIMIT = 200  # Maximum words per debater response
 NUM_CHOICES = 4  # Number of answer choices to use in debate (2-4 for GPQA)
 
@@ -56,7 +56,7 @@ DEBATE_MODE = 'non_interactive'  # Options: 'interactive', 'non_interactive', or
 # - 'both': Run both modes for comparison (doubles execution time)
 
 # Debate style configuration
-DEBATE_STYLE = 'simultaneous'  # Options: 'sequential' or 'simultaneous'
+DEBATE_STYLE = 'sequential'  # Options: 'sequential' or 'simultaneous'
 # - 'sequential': A speaks, then B speaks with A's response in history (1 turn = 1 response)
 # - 'simultaneous': A and B both respond to same history (1 turn = both responses)
 # NOTE: 'simultaneous' mode does NOT support 'interactive' DEBATE_MODE
@@ -67,11 +67,14 @@ SAVE_TO_BASELINE_CACHE = True  # Save new direct QA results to cache
 BASELINE_CACHE_DIR = './baseline_cache'  # Directory to store baseline cache files
 
 # Dataset configuration (for cache validation)
-DATASET_NAME = "Idavidrein/gpqa"
-DATASET_SUBSET = "gpqa_diamond"
-# DATASET_SUBSET = "gpqa_main"
+# DATASET_NAME = "Idavidrein/gpqa"
+# DATASET_SUBSET = "gpqa_diamond"
+# # DATASET_SUBSET = "gpqa_main"
+# DATASET_SPLIT = "train"
 
-DATASET_SPLIT = "train"
+DATASET_NAME = "TIGER-Lab/MMLU-Pro"
+DATASET_SUBSET = None
+DATASET_SPLIT = "test"
 
 # Random seed configuration
 # Run debates using run_parallel_debates.py (even for single debates with --num-debates 1)
