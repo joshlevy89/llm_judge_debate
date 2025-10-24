@@ -34,7 +34,7 @@ from config import (
     DEBATE_MODEL, JUDGE_MODEL,
     DIRECT_QA_TEMPERATURE, JUDGE_DECISION_TEMPERATURE, FINAL_VERDICT_TEMPERATURE,
     MAX_RETRIES, RETRY_BASE_WAIT, API_TIMEOUT,
-    MAX_TURNS_DEFAULT, DEBATER_WORD_LIMIT, NUM_CHOICES,
+    MAX_TURNS_DEFAULT, MIN_TURNS_DEFAULT, DEBATER_WORD_LIMIT, NUM_CHOICES,
     USE_BASELINE_CACHE, SAVE_TO_BASELINE_CACHE, BASELINE_CACHE_DIR,
     DEBATE_MODE, DEBATE_STYLE,
     DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT,
@@ -518,28 +518,43 @@ def debate_round(question, debater_answers, debater_letters, history, current_de
     return llm_generate(DEBATE_MODEL, prompt, effort=DEBATE_MODEL_EFFORT)
 
 
-def create_judge_prompt(debater_letters):
+def create_judge_prompt(debater_letters, min_turns_reached=True):
     """Create the system prompt for the LLM judge with N debaters.
     
     Args:
         debater_letters: List of debater letters (e.g., ['A', 'B'] or ['A', 'B', 'C', 'D'])
+        min_turns_reached: Whether minimum turns requirement has been met
     """
     debaters_list = ", ".join(debater_letters[:-1]) + f", and {debater_letters[-1]}" if len(debater_letters) > 1 else debater_letters[0]
     
-    action_examples = ["'next' - Let the next debater speak", "'end' - End the debate when you're ready to make a final decision"]
+    action_examples = ["'next' - Let the next debater speak"]
+    if min_turns_reached:
+        action_examples.append("'end' - End the debate when you're ready to make a final decision")
     for letter in debater_letters:
         action_examples.append(f"'{letter}: <your question>' - Ask Debater {letter} a specific question")
     actions_list = "\n- ".join(action_examples)
     
     example_questions = [f'"{letter}: Can you clarify your reasoning about X?"' for letter in debater_letters[:2]]
-    examples_text = "\n".join(['"next"', '"end"'] + example_questions)
+    if min_turns_reached:
+        examples_text = "\n".join(['"next"', '"end"'] + example_questions)
+    else:
+        examples_text = "\n".join(['"next"'] + example_questions)
+    
+    if min_turns_reached:
+        role_description = """Your role is to:
+1. Evaluate the arguments presented by all debaters
+2. Ask clarifying questions when needed
+3. Decide when you have enough information to make a verdict"""
+    else:
+        role_description = """Your role is to:
+1. Evaluate the arguments presented by all debaters
+2. Ask clarifying questions when needed
+
+Note: Minimum debate turns requirement not yet met - you cannot end the debate yet."""
     
     return f"""You are a judge moderating a debate between debaters ({debaters_list}) arguing for different answers to a question.
 
-Your role is to:
-1. Evaluate the arguments presented by all debaters
-2. Ask clarifying questions when needed
-3. Decide when you have enough information to make a verdict
+{role_description}
 
 Available actions:
 - {actions_list}
@@ -555,7 +570,7 @@ Do not provide explanations or commentary - just the action."""
 class LLMJudgeDebate:
     """Manages an LLM-judged debate with N debaters."""
 
-    def __init__(self, question, debater_answers, debater_letters, max_turns=MAX_TURNS_DEFAULT, verbose=True, interactive=True, debate_style='sequential'):
+    def __init__(self, question, debater_answers, debater_letters, max_turns=MAX_TURNS_DEFAULT, min_turns=MIN_TURNS_DEFAULT, verbose=True, interactive=True, debate_style='sequential'):
         if debate_style == 'simultaneous' and interactive:
             raise ValueError("Simultaneous debate style does not support interactive mode. Please use debate_style='sequential' or interactive=False.")
         
@@ -576,10 +591,10 @@ class LLMJudgeDebate:
         self.current_turn_idx = 0
         self.last_speaker = None
         self.max_turns = max_turns
+        self.min_turns = min_turns
         self.turn_count = 0
         self.interactive = interactive
         self.debate_style = debate_style
-        self.judge_prompt = create_judge_prompt(debater_letters) if interactive else self.create_non_interactive_judge_prompt(debater_letters)
         self.verbose = verbose
 
     @staticmethod
@@ -609,6 +624,13 @@ Do not provide explanations or commentary - just the action."""
 
     def judge_decision(self):
         """Get the judge's next action."""
+        min_turns_reached = self.turn_count >= self.min_turns
+        
+        if not self.interactive and not min_turns_reached:
+            return "next"
+        
+        judge_prompt = create_judge_prompt(self.debater_letters, min_turns_reached) if self.interactive else self.create_non_interactive_judge_prompt(self.debater_letters)
+        
         debaters_info = "\n".join([f"Debater {letter} is arguing for: {answer}" 
                                    for letter, answer in zip(self.debater_letters, self.debater_answers)])
         
@@ -622,7 +644,7 @@ Debate transcript so far:
 What is your next action?"""
 
         try:
-            return llm_generate(JUDGE_MODEL, prompt, temperature=JUDGE_DECISION_TEMPERATURE, system_prompt=self.judge_prompt)
+            return llm_generate(JUDGE_MODEL, prompt, temperature=JUDGE_DECISION_TEMPERATURE, system_prompt=judge_prompt)
         except Exception as e:
             print(f"Error getting judge decision: {e}")
             return "end"
@@ -870,12 +892,13 @@ Reasoning: [brief explanation of your decision]"""
         }
 
 
-def save_config(output_dir, max_turns_used=None, master_seed=None, quiet=False, output_dir_override=False):
+def save_config(output_dir, max_turns_used=None, min_turns_used=None, master_seed=None, quiet=False, output_dir_override=False):
     """Save the current configuration to the output directory as JSON.
     
     Args:
         output_dir: Directory to save config file
         max_turns_used: Actual max_turns value used in this run (if different from default)
+        min_turns_used: Actual min_turns value used in this run (if different from default)
         master_seed: Master seed from parallel runner (None for random sampling)
         quiet: Whether quiet mode was enabled
         output_dir_override: Whether output_dir was overridden via CLI
@@ -884,6 +907,7 @@ def save_config(output_dir, max_turns_used=None, master_seed=None, quiet=False, 
     
     # Use the actual value if provided, otherwise use default
     actual_max_turns = max_turns_used if max_turns_used is not None else MAX_TURNS_DEFAULT
+    actual_min_turns = min_turns_used if min_turns_used is not None else MIN_TURNS_DEFAULT
     
     config_dict = {
         "model_configuration": {
@@ -904,6 +928,9 @@ def save_config(output_dir, max_turns_used=None, master_seed=None, quiet=False, 
             "max_turns": actual_max_turns,
             "max_turns_default": MAX_TURNS_DEFAULT,
             "max_turns_overridden": max_turns_used is not None and max_turns_used != MAX_TURNS_DEFAULT,
+            "min_turns": actual_min_turns,
+            "min_turns_default": MIN_TURNS_DEFAULT,
+            "min_turns_overridden": min_turns_used is not None and min_turns_used != MIN_TURNS_DEFAULT,
             "debater_word_limit": DEBATER_WORD_LIMIT,
             "num_choices": NUM_CHOICES,
             "debate_mode": DEBATE_MODE,
@@ -1256,7 +1283,7 @@ def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactiv
 
 
 def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max_turns=MAX_TURNS_DEFAULT, 
-                            quiet=False, run_id=None, jsonl_filename=None):
+                            min_turns=MIN_TURNS_DEFAULT, quiet=False, run_id=None, jsonl_filename=None):
     """
     Run a single debate experiment. This function can be called directly or from CLI.
     
@@ -1265,6 +1292,7 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
         question_idx: Question index to use (None = random)
         master_seed: Master seed from parallel runner, for logging only
         max_turns: Maximum number of debate turns
+        min_turns: Minimum number of debate turns before judge can end
         quiet: Suppress verbose output
         run_id: Unique run identifier (auto-generated if not provided)
         jsonl_filename: JSONL filename to append results to (default: master_results.jsonl)
@@ -1287,6 +1315,7 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
         save_config(
             output_dir, 
             max_turns_used=max_turns,
+            min_turns_used=min_turns,
             master_seed=master_seed,
             quiet=quiet,
             output_dir_override=output_dir_override
@@ -1467,6 +1496,7 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
                     question_data['debater_answers'],
                     question_data['debater_letters'],
                     max_turns=max_turns,
+                    min_turns=min_turns,
                     verbose=not quiet,
                     interactive=True,
                     debate_style=DEBATE_STYLE
@@ -1528,6 +1558,7 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
                     question_data['debater_answers'],
                     question_data['debater_letters'],
                     max_turns=max_turns,
+                    min_turns=min_turns,
                     verbose=not quiet,
                     interactive=False,
                     debate_style=DEBATE_STYLE
@@ -1664,6 +1695,8 @@ def main():
                         help='Master seed from parallel runner, for logging only')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help='Maximum number of debate turns')
+    parser.add_argument('--min-turns', type=int, default=MIN_TURNS_DEFAULT,
+                        help='Minimum number of debate turns before judge can end')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress verbose output')
     parser.add_argument('--run-id', type=str, default=None,
@@ -1679,6 +1712,7 @@ def main():
             question_idx=args.question_idx,
             master_seed=args.master_seed,
             max_turns=args.max_turns,
+            min_turns=args.min_turns,
             quiet=args.quiet,
             run_id=args.run_id,
             jsonl_filename=args.jsonl_filename

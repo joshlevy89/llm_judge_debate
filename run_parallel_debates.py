@@ -19,13 +19,13 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from datasets import load_dataset
-from config import MAX_TURNS_DEFAULT, MASTER_SEED, DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
+from config import MAX_TURNS_DEFAULT, MIN_TURNS_DEFAULT, MASTER_SEED, DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT
 from run_single_debate import run_single_debate_logic
 
 
 def run_single_debate_thread(debate_id: int, output_dir: str, jsonl_filename: str, question_idx: int = None, 
-                             max_turns: int = MAX_TURNS_DEFAULT, quiet: bool = True, 
-                             master_seed: int = None) -> Dict:
+                             max_turns: int = MAX_TURNS_DEFAULT, min_turns: int = MIN_TURNS_DEFAULT,
+                             quiet: bool = True, master_seed: int = None) -> Dict:
     """
     Run a single debate in a thread.
     
@@ -35,6 +35,7 @@ def run_single_debate_thread(debate_id: int, output_dir: str, jsonl_filename: st
         jsonl_filename: JSONL filename for results
         question_idx: Question index to use (None = random)
         max_turns: Maximum debate turns
+        min_turns: Minimum debate turns before judge can end
         quiet: Suppress verbose output (default True for threading)
         master_seed: Master seed for logging
         
@@ -51,6 +52,7 @@ def run_single_debate_thread(debate_id: int, output_dir: str, jsonl_filename: st
             question_idx=question_idx,
             master_seed=master_seed,
             max_turns=max_turns,
+            min_turns=min_turns,
             quiet=quiet,
             run_id=run_id,
             jsonl_filename=jsonl_filename
@@ -160,6 +162,8 @@ Examples:
                         help=f'Master seed - samples questions without replacement (default: {MASTER_SEED or "random"})')
     parser.add_argument('--max-turns', type=int, default=MAX_TURNS_DEFAULT,
                         help=f'Maximum number of debate turns (default: {MAX_TURNS_DEFAULT})')
+    parser.add_argument('--min-turns', type=int, default=MIN_TURNS_DEFAULT,
+                        help=f'Minimum number of debate turns before judge can end (default: {MIN_TURNS_DEFAULT})')
     parser.add_argument('--quiet', action='store_true',
                         help='Suppress verbose output in debate processes')
     parser.add_argument('--wait', action='store_true',
@@ -232,6 +236,7 @@ Examples:
     print(f"Run folder: {run_output_dir}")
     print(f"Master JSONL: {master_jsonl}")
     print(f"Max turns per debate: {args.max_turns}")
+    print(f"Min turns per debate: {args.min_turns}")
     print("="*70)
     
     # Note: No need to backup individual JSONL since each run has its own folder
@@ -261,6 +266,7 @@ Examples:
                 jsonl_filename=Path(master_jsonl).name,
                 question_idx=question_idx,
                 max_turns=args.max_turns,
+                min_turns=args.min_turns,
                 quiet=args.quiet,
                 master_seed=args.seed
             )
