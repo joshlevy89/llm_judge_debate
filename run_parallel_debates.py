@@ -25,7 +25,7 @@ from run_single_debate import run_single_debate_logic
 
 def run_single_debate_thread(debate_id: int, output_dir: str, jsonl_filename: str, question_idx: int = None, 
                              max_turns: int = MAX_TURNS_DEFAULT, min_turns: int = MIN_TURNS_DEFAULT,
-                             quiet: bool = True, master_seed: int = None) -> Dict:
+                             quiet: bool = True, master_seed: int = None, dataset=None) -> Dict:
     """
     Run a single debate in a thread.
     
@@ -38,6 +38,7 @@ def run_single_debate_thread(debate_id: int, output_dir: str, jsonl_filename: st
         min_turns: Minimum debate turns before judge can end
         quiet: Suppress verbose output (default True for threading)
         master_seed: Master seed for logging
+        dataset: Pre-loaded dataset to avoid concurrent HuggingFace requests
         
     Returns:
         Dict with run results
@@ -55,7 +56,8 @@ def run_single_debate_thread(debate_id: int, output_dir: str, jsonl_filename: st
             min_turns=min_turns,
             quiet=quiet,
             run_id=run_id,
-            jsonl_filename=jsonl_filename
+            jsonl_filename=jsonl_filename,
+            dataset=dataset
         )
         print(f"[run_id: {run_id}] ✓ Completed")
         return result
@@ -173,12 +175,16 @@ Examples:
     
     args = parser.parse_args()
     
+    # Load dataset once upfront to avoid concurrent HuggingFace requests from all threads
+    print("Loading dataset...")
+    dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
+    dataset_size = len(dataset)
+    print(f"Dataset loaded: {dataset_size} questions available")
+    
     # Sample question indices without replacement using master seed
     question_indices = None
     if args.seed is not None:
         random.seed(args.seed)
-        dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
-        dataset_size = len(dataset)
         
         # Sample without replacement
         question_indices = random.sample(range(dataset_size), min(args.num_debates, dataset_size))
@@ -268,7 +274,8 @@ Examples:
                 max_turns=args.max_turns,
                 min_turns=args.min_turns,
                 quiet=args.quiet,
-                master_seed=args.seed
+                master_seed=args.seed,
+                dataset=dataset
             )
             futures.append(future)
         

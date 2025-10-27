@@ -170,7 +170,7 @@ def llm_generate(model_name, prompt, temperature=None, system_prompt=None, max_r
                 raise
 
 
-def load_question(question_idx=None, master_seed=None, num_choices=NUM_CHOICES):
+def load_question(question_idx=None, master_seed=None, num_choices=NUM_CHOICES, dataset=None):
     """Load a question from the configured dataset with N answer choices.
     
     Supports: GPQA, MMLU-Pro
@@ -183,11 +183,14 @@ def load_question(question_idx=None, master_seed=None, num_choices=NUM_CHOICES):
         num_choices: Number of answer choices to include in debate.
                     If num_choices < total available, selects 1 correct + (num_choices-1) incorrect.
                     If num_choices == total available, uses all choices.
+        dataset: Pre-loaded dataset to avoid concurrent HuggingFace requests.
+                If None, will load dataset (only for standalone usage).
     
     Returns:
         Dict with question info and lists of debater answers, positions, etc.
     """
-    dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
+    if dataset is None:
+        dataset = load_dataset(DATASET_NAME, DATASET_SUBSET, split=DATASET_SPLIT)
     
     if question_idx is not None:
         random_idx = question_idx % len(dataset)
@@ -1283,7 +1286,7 @@ def save_results_to_jsonl(question_data, debater_qa, judge_qa, debate_interactiv
 
 
 def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max_turns=MAX_TURNS_DEFAULT, 
-                            min_turns=MIN_TURNS_DEFAULT, quiet=False, run_id=None, jsonl_filename=None):
+                            min_turns=MIN_TURNS_DEFAULT, quiet=False, run_id=None, jsonl_filename=None, dataset=None):
     """
     Run a single debate experiment. This function can be called directly or from CLI.
     
@@ -1296,6 +1299,7 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
         quiet: Suppress verbose output
         run_id: Unique run identifier (auto-generated if not provided)
         jsonl_filename: JSONL filename to append results to (default: master_results.jsonl)
+        dataset: Pre-loaded dataset to avoid concurrent HuggingFace requests
     
     Returns:
         Dict with run_id and paths to output files
@@ -1323,7 +1327,7 @@ def run_single_debate_logic(output_dir, question_idx=None, master_seed=None, max
 
     if not quiet:
         print("Loading question...")
-    question_data = load_question(question_idx=question_idx, master_seed=master_seed)
+    question_data = load_question(question_idx=question_idx, master_seed=master_seed, dataset=dataset)
     
     # Initialize debate detail file with header and question
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
