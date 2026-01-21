@@ -27,7 +27,7 @@ class RequestWithTimeout:
         except Exception as e:
             self.exception = e
 
-def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_tokens=None, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None):
+def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_tokens=None, top_p=None, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -43,6 +43,9 @@ def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_t
     
     if max_tokens:
         data["max_tokens"] = max_tokens
+    
+    if top_p is not None:
+        data["top_p"] = top_p
     
     if reasoning_effort or reasoning_max_tokens:
         reasoning_config = {}
@@ -95,10 +98,10 @@ def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_t
             f"Response preview: {req.result.text[:500]}"
         )
 
-def call_openrouter(prompt, model_name, api_key, temperature=0.0, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None, max_tokens=None, run_id=None, record_id=None, context=None):
+def call_openrouter(prompt, model_name, api_key, temperature=0.0, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None, max_tokens=None, top_p=None, run_id=None, record_id=None, context=None):
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response_json = _make_openrouter_request(prompt, model_name, api_key, temperature, max_tokens, reasoning_effort, reasoning_max_tokens, reasoning_enabled)
+            response_json = _make_openrouter_request(prompt, model_name, api_key, temperature, max_tokens, top_p, reasoning_effort, reasoning_max_tokens, reasoning_enabled)
             
             if 'choices' in response_json and len(response_json['choices']) > 0:
                 message = response_json['choices'][0]['message']

@@ -1,0 +1,520 @@
+{
+    "metadata": {
+      "subject": "algebra",
+      "total_problems": 125,
+      "problems_per_level": 25,
+      "levels": [1, 2, 3, 4, 5]
+    },
+    "problems": {
+      "level_1": [
+        {
+          "id": "L1_01",
+          "problem": "If $a = 3$ and $b = 7$, what is the value of $\\frac{a^2 + b^2}{2}$?"
+        },
+        {
+          "id": "L1_02",
+          "problem": "The sum of three consecutive integers is 72. What is the largest of these integers?"
+        },
+        {
+          "id": "L1_03",
+          "problem": "The function $g(x)$ is defined by $g(x) = 2x^2 + 3x$. What is the value of $g(3)$?"
+        },
+        {
+          "id": "L1_04",
+          "problem": "If $\\frac{2}{3}x = 18$, what is the value of $x$?"
+        },
+        {
+          "id": "L1_05",
+          "problem": "The perimeter of an equilateral triangle is 45 cm. What is the length of one side, in cm?"
+        },
+        {
+          "id": "L1_06",
+          "problem": "The first three terms of an arithmetic sequence are 5, 12, and 19. What is the value of the 15th term?"
+        },
+        {
+          "id": "L1_07",
+          "problem": "Evaluate $(3 + 2)(3^2 + 2^2)(3^4 + 2^4)$."
+        },
+        {
+          "id": "L1_08",
+          "problem": "Given $f(x) = 3x - 4$ and $g(x) = x + 5$, find $f(g(2))$."
+        },
+        {
+          "id": "L1_09",
+          "problem": "A recipe calls for 3 cups of flour to make 24 cookies. How many cups of flour are needed to make 40 cookies?"
+        },
+        {
+          "id": "L1_10",
+          "problem": "What is the value of $(a + b)(a - b)$ if $a = 8$ and $b = 3$?"
+        },
+        {
+          "id": "L1_11",
+          "problem": "If 4 pens cost the same as 6 pencils, and 3 pencils cost $\\$2.25$, how much do 2 pens cost, in dollars?"
+        },
+        {
+          "id": "L1_12",
+          "problem": "Simplify: $\\frac{3x + 6}{3}$."
+        },
+        {
+          "id": "L1_13",
+          "problem": "The operation $\\triangle$ is defined as $a \\triangle b = 2a + 3b$. What is the value of $5 \\triangle 4$?"
+        },
+        {
+          "id": "L1_14",
+          "problem": "Compute: $72 \\times 15 + 28 \\times 15$."
+        },
+        {
+          "id": "L1_15",
+          "problem": "Calculate: $(32)^{\\frac{3}{5}}$."
+        },
+        {
+          "id": "L1_16",
+          "problem": "Simplify $(2)(3b)(4b^2)(5b^3)$."
+        },
+        {
+          "id": "L1_17",
+          "problem": "Expand the product $(x + 3)(x - 4)$."
+        },
+        {
+          "id": "L1_18",
+          "problem": "If $x$ satisfies $\\frac{1}{4} + \\frac{1}{6} = \\frac{5}{x}$, what is the value of $x$?"
+        },
+        {
+          "id": "L1_19",
+          "problem": "What is the value of $y^4 + 2y$ when $y = 3$?"
+        },
+        {
+          "id": "L1_20",
+          "problem": "A number increased by 20% of itself equals 60. What is the number?"
+        },
+        {
+          "id": "L1_21",
+          "problem": "If $2x + 3 = 15$, what is the value of $4x - 1$?"
+        },
+        {
+          "id": "L1_22",
+          "problem": "The average of five numbers is 12. If four of the numbers are 8, 10, 14, and 16, what is the fifth number?"
+        },
+        {
+          "id": "L1_23",
+          "problem": "Compute $38^2 - 28^2$ in your head."
+        },
+        {
+          "id": "L1_24",
+          "problem": "Given $h(x) = x^2 - 2x + 1$, find $h(5)$."
+        },
+        {
+          "id": "L1_25",
+          "problem": "If a car travels at 55 miles per hour, how many miles does it travel in 3 hours and 30 minutes?"
+        }
+      ],
+      "level_2": [
+        {
+          "id": "L2_01",
+          "problem": "Let $f(x) = x^3 - 2$ and $g(x) = 3x^2 + x - 1$. What is $g(f(2))$?"
+        },
+        {
+          "id": "L2_02",
+          "problem": "Let \\[f(x) = \\begin{cases} 2x + 1 & \\text{if } x \\text{ is even}, \\\\ x^2 - 1 & \\text{if } x \\text{ is odd}. \\end{cases}\\] What is $f(f(f(3)))$?"
+        },
+        {
+          "id": "L2_03",
+          "problem": "A geometric sequence of positive integers has first term 5 and fourth term 320. What is the fifth term of the sequence?"
+        },
+        {
+          "id": "L2_04",
+          "problem": "Rationalize the denominator of $\\displaystyle\\frac{15}{\\sqrt{15}}$."
+        },
+        {
+          "id": "L2_05",
+          "problem": "Solve for $x$: $3^{2x+1} = 27^x$."
+        },
+        {
+          "id": "L2_06",
+          "problem": "Simplify the following expression: $\\left(3x + 5x^2 + 2\\right) + \\left(4x - 2x^2 - 7\\right)$. Express your answer in the form $ax^2 + bx + c$."
+        },
+        {
+          "id": "L2_07",
+          "problem": "Factor $t^2 - 81$."
+        },
+        {
+          "id": "L2_08",
+          "problem": "What is the greatest possible value of $x + y$ such that $x^2 + y^2 = 50$ and $xy = 7$?"
+        },
+        {
+          "id": "L2_09",
+          "problem": "Given that $5$ is a solution to $x^2 + bx - 30 = 0$, what is the value of $b$?"
+        },
+        {
+          "id": "L2_10",
+          "problem": "Marcus has 60 feet of fencing to enclose a rectangular garden. If the length is 5 feet more than twice the width, what is the area of the garden in square feet?"
+        },
+        {
+          "id": "L2_11",
+          "problem": "Find the coordinates of the point halfway between $(-2, 5)$ and $(6, -3)$."
+        },
+        {
+          "id": "L2_12",
+          "problem": "Evaluate $\\left\\lfloor\\sqrt{75}\\right\\rfloor$."
+        },
+        {
+          "id": "L2_13",
+          "problem": "Solve for $x$: $(x + 2)^3 = 64$."
+        },
+        {
+          "id": "L2_14",
+          "problem": "What is the sum of all solutions of the equation $\\frac{6x}{24} = \\frac{8}{x}$?"
+        },
+        {
+          "id": "L2_15",
+          "problem": "To calculate $41^2$, Maria mentally computes $40^2$ and adds 81. What number does she add to $40^2$ to calculate $42^2$?"
+        },
+        {
+          "id": "L2_16",
+          "problem": "Suppose $c \\neq 0$. We can write $(5c + 7 + 3c^2) - (2c - 4 + c^2)$ in the form $ac^2 + bc + d$. Find $a + b + d$."
+        },
+        {
+          "id": "L2_17",
+          "problem": "The sum of the first five terms of an arithmetic sequence is 45. If the sixth term is 15, what is the seventh term?"
+        },
+        {
+          "id": "L2_18",
+          "problem": "If $\\sqrt{3x^2 - 2} = \\sqrt{25}$, find the average of all possible values of $x$."
+        },
+        {
+          "id": "L2_19",
+          "problem": "Bernadette has American dollars and wants to buy a book in London that costs 8 British pounds. If 1 GBP = 1.25 USD, how many dollars does she need?"
+        },
+        {
+          "id": "L2_20",
+          "problem": "Simplify $\\sqrt[3]{27 + 37} \\cdot \\sqrt[3]{8}$."
+        },
+        {
+          "id": "L2_21",
+          "problem": "Evaluate the expression $(a + b)^2 - (a - b)^2$ if $a = 5$ and $b = 2$."
+        },
+        {
+          "id": "L2_22",
+          "problem": "What is the sum of the coordinates of the midpoint of the segment with endpoints $(-3, 8)$ and $(7, -2)$?"
+        },
+        {
+          "id": "L2_23",
+          "problem": "A geometric sequence has first term 4 and sixth term 972. What is the common ratio?"
+        },
+        {
+          "id": "L2_24",
+          "problem": "Factor $4x^2 - 25$."
+        },
+        {
+          "id": "L2_25",
+          "problem": "The price of a shirt after a 15% discount is $\\$51$. What was the original price of the shirt?"
+        }
+      ],
+      "level_3": [
+        {
+          "id": "L3_01",
+          "problem": "What is the degree of the polynomial $(3x^5 + 2x^3 - 7)(4x^2 + 1)$?"
+        },
+        {
+          "id": "L3_02",
+          "problem": "Evaluate $\\left\\lceil 5\\left(3 - \\frac{1}{4}\\right) \\right\\rceil$."
+        },
+        {
+          "id": "L3_03",
+          "problem": "A store sells notebooks for $\\$3$ each and pens for $\\$2$ each. Maria spent $\\$26$ and bought 10 items total. How many notebooks did she buy?"
+        },
+        {
+          "id": "L3_04",
+          "problem": "The endpoints of a diameter of a circle are $(3, 7)$ and $(-5, 1)$. What is the sum of the coordinates of the center?"
+        },
+        {
+          "id": "L3_05",
+          "problem": "Four workers can paint a house in 12 hours. How many hours would it take 6 workers to paint the same house?"
+        },
+        {
+          "id": "L3_06",
+          "problem": "At what point does the line through $(2, 1)$ and $(6, 9)$ intersect the $y$-axis? Express your answer as an ordered pair."
+        },
+        {
+          "id": "L3_07",
+          "problem": "Find the coefficient of the $x^3$ term in the expansion of $(2x^2 + 3x - 1)(x^2 - 4x + 2)$."
+        },
+        {
+          "id": "L3_08",
+          "problem": "What is the greatest integer $n$ such that $n^2 - 9n + 14 \\leq 0$?"
+        },
+        {
+          "id": "L3_09",
+          "problem": "What is the positive difference between the two solutions of $|2x - 3| = 11$?"
+        },
+        {
+          "id": "L3_10",
+          "problem": "If $(x - 1)(x + 4) = 36$, find the product of the possible values of $x$."
+        },
+        {
+          "id": "L3_11",
+          "problem": "Rationalize the denominator: $\\frac{3}{\\sqrt{5} + 2}$."
+        },
+        {
+          "id": "L3_12",
+          "problem": "The 1st and 9th terms of an arithmetic sequence are 7 and 39, respectively. What is the 25th term?"
+        },
+        {
+          "id": "L3_13",
+          "problem": "Simplify $(3x + 2)(x - 4) - (2x - 3)(x + 1)$."
+        },
+        {
+          "id": "L3_14",
+          "problem": "What value of $x$ gives the minimum value of $3x^2 + 18x - 7$?"
+        },
+        {
+          "id": "L3_15",
+          "problem": "The square of an integer is 56 greater than the integer. What is the sum of all integers for which this is true?"
+        },
+        {
+          "id": "L3_16",
+          "problem": "A train travels at a constant speed. It covers 210 miles in 3 hours and 30 minutes. What is its speed in miles per hour?"
+        },
+        {
+          "id": "L3_17",
+          "problem": "Express $\\frac{0.\\overline{45}}{0.\\overline{9}}$ as a common fraction."
+        },
+        {
+          "id": "L3_18",
+          "problem": "A line passes through $(4, -2)$ with slope $3$. What is the $y$-intercept of this line?"
+        },
+        {
+          "id": "L3_19",
+          "problem": "Factor completely: $45x^4 - 80x^2$."
+        },
+        {
+          "id": "L3_20",
+          "problem": "If $n + \\frac{1}{n} = 6$, what is the value of $n^2 + \\frac{1}{n^2}$?"
+        },
+        {
+          "id": "L3_21",
+          "problem": "Evaluate $\\log_2 \\frac{1}{32}$."
+        },
+        {
+          "id": "L3_22",
+          "problem": "Simplify $(4 + 3i)^2$. Express your answer in the form $a + bi$."
+        },
+        {
+          "id": "L3_23",
+          "problem": "What is the sum of the values of $x$ that satisfy $x^2 - 3x - 10 = 8$?"
+        },
+        {
+          "id": "L3_24",
+          "problem": "How many integers $n$ satisfy $(n - 2)(n + 5) \\leq 0$?"
+        },
+        {
+          "id": "L3_25",
+          "problem": "Find the value of $c$ such that the line $y = 2x + c$ passes through the point of intersection of $y = x + 3$ and $y = -x + 7$."
+        }
+      ],
+      "level_4": [
+        {
+          "id": "L4_01",
+          "problem": "Find the center of the circle with equation $x^2 + 8x + y^2 - 4y = 5$."
+        },
+        {
+          "id": "L4_02",
+          "problem": "Consider the functions $f(x) = 2x^2 + \\frac{3}{x} - 1$ and $g(x) = x^2 + k$. If $f(3) - g(3) = 5$, what is the value of $k$?"
+        },
+        {
+          "id": "L4_03",
+          "problem": "Find the value of $x$ that satisfies $\\frac{\\sqrt{5x - 3}}{\\sqrt{2x + 1}} = \\frac{\\sqrt{7}}{2}$."
+        },
+        {
+          "id": "L4_04",
+          "problem": "The points $(1, 3)$ and $(4, 7)$ are adjacent vertices of a square. What is the area of the square?"
+        },
+        {
+          "id": "L4_05",
+          "problem": "Find the value of $x$ if $x$ is positive and $x \\cdot \\lfloor x \\rfloor = 56$. Express your answer as a decimal."
+        },
+        {
+          "id": "L4_06",
+          "problem": "A triangle has sides of length 5, 11, and $x^2$. For what positive integer values of $x$ does the triangle exist? List all values separated by commas."
+        },
+        {
+          "id": "L4_07",
+          "problem": "A ball is thrown upward with height given by $-16t^2 + 80t + 4$ feet at time $t$ seconds. What is the maximum height reached?"
+        },
+        {
+          "id": "L4_08",
+          "problem": "Let $C$ be the circle with equation $x^2 + y^2 + 8x - 6y = 0$. If $(a, b)$ is the center and $r$ is the radius, find $a + b + r$."
+        },
+        {
+          "id": "L4_09",
+          "problem": "If $f(x) = x^2 - 4x + m$ and $g(x) = x^2 - 4x + 3m$, and $3f(5) = 2g(5)$, find $m$."
+        },
+        {
+          "id": "L4_10",
+          "problem": "Find the product of all constants $t$ such that $x^2 + tx + 12$ can be factored as $(x + a)(x + b)$ where $a$ and $b$ are integers."
+        },
+        {
+          "id": "L4_11",
+          "problem": "How many distinct solutions are there to $|x + 5| = |x - 3|$?"
+        },
+        {
+          "id": "L4_12",
+          "problem": "Solve the equation $|2y - 5| + y = 8$ for $y$."
+        },
+        {
+          "id": "L4_13",
+          "problem": "The center of the circle $x^2 + y^2 = 4x - 8y + 5$ is $(a, b)$. What is $a + b$?"
+        },
+        {
+          "id": "L4_14",
+          "problem": "The three points $A(0, 0)$, $B(6, 0)$, and $C(3, 4)$ form a triangle. If $P = (3, 1)$, find the sum of distances from $P$ to all three vertices."
+        },
+        {
+          "id": "L4_15",
+          "problem": "Each term of a sequence, after the first, is twice the reciprocal of the preceding term. If the first term is 3, what is the 10th term?"
+        },
+        {
+          "id": "L4_16",
+          "problem": "Let $p$ and $q$ be solutions to $(x - 2)(3x + 4) = x^2 - 5x + 6$. What is $(p - 1)(q - 1)$?"
+        },
+        {
+          "id": "L4_17",
+          "problem": "For how many integers $n$ is $\\sqrt{n + 3} \\le \\sqrt{2n - 1} < \\sqrt{3n - 5}$ satisfied?"
+        },
+        {
+          "id": "L4_18",
+          "problem": "If $8^{8} + 8^{8} + 8^{8} + 8^{8} + 8^{8} + 8^{8} + 8^{8} + 8^{8} = 2^x$, what is $x$?"
+        },
+        {
+          "id": "L4_19",
+          "problem": "The product of two consecutive even integers is $3{,}360$. What is their sum?"
+        },
+        {
+          "id": "L4_20",
+          "problem": "Simplify and rationalize: $\\frac{1}{2 - \\frac{1}{\\sqrt{2} + 1}}$."
+        },
+        {
+          "id": "L4_21",
+          "problem": "The graph of $y = ax^2 + bx + c$ passes through $(0, -3)$, $(1, -2)$, and $(2, 3)$. Find $a + b + c$."
+        },
+        {
+          "id": "L4_22",
+          "problem": "What is the distance from the center of the circle $x^2 + y^2 + 6x - 2y = 15$ to the point $(2, 5)$?"
+        },
+        {
+          "id": "L4_23",
+          "problem": "For what value of $x$ does $y = \\frac{x - 3}{2x + 5}$ have a vertical asymptote?"
+        },
+        {
+          "id": "L4_24",
+          "problem": "Let $f(x) = \\left\\lfloor \\frac{2}{x - 1} \\right\\rfloor$ for $x > 1$ and $f(x) = \\left\\lceil \\frac{2}{x - 1} \\right\\rceil$ for $x < 1$. Which integer is not in the range of $f$?"
+        },
+        {
+          "id": "L4_25",
+          "problem": "Given the table below for function $f$: \\begin{tabular}{|c|c|c|c|c|c|} \\hline $x$ & 1 & 2 & 3 & 4 & 5 \\\\ \\hline $f(x)$ & 4 & 5 & 1 & 2 & 3 \\\\ \\hline \\end{tabular} If $f^{-1}$ exists, find $f^{-1}(f^{-1}(f^{-1}(4)))$."
+        }
+      ],
+      "level_5": [
+        {
+          "id": "L5_01",
+          "problem": "Let \\[f(x) = \\begin{cases} 2x + b & \\text{if } x > 3, \\\\ x^2 - 2x & \\text{if } -1 \\le x \\le 3, \\\\ ax - 4 & \\text{if } x < -1. \\end{cases}\\] Find $a + b$ if $f$ is continuous."
+        },
+        {
+          "id": "L5_02",
+          "problem": "A marching band arranges members in a rectangular formation with $m$ members per row and $r$ rows. With their current arrangement, 5 members are left out. If they add 2 to each row and remove 1 row, everyone fits exactly. If the band has fewer than 150 members, what is the maximum number of members?"
+        },
+        {
+          "id": "L5_03",
+          "problem": "For what values of $p$ is $\\frac{4(pq^2 + p^2q + 2q^2 + 2pq)}{p + q} > 3p^2q$ true for all $q > 0$?"
+        },
+        {
+          "id": "L5_04",
+          "problem": "Anya invests money in an account with 6% annual interest compounded monthly. To the nearest dollar, how much should she invest to have $\\$50{,}000$ after 4 years?"
+        },
+        {
+          "id": "L5_05",
+          "problem": "The greatest integer function $\\lfloor x \\rfloor$ gives the largest integer not exceeding $x$. Find the sum of the four smallest positive solutions to $x - \\lfloor x \\rfloor = \\frac{2}{\\lfloor x \\rfloor}$."
+        },
+        {
+          "id": "L5_06",
+          "problem": "Let \\[f(x) = \\begin{cases} x^2 + 2x - 1 & \\text{if } x \\le 1, \\\\ ax + b & \\text{if } x > 1. \\end{cases}\\] Find $a + b$ if both $f$ and $f'$ are continuous at $x = 1$."
+        },
+        {
+          "id": "L5_07",
+          "problem": "Let \\[g(x) = \\begin{cases} 2x^2 - 5 & \\text{if } x \\le 2, \\\\ ax - 3 & \\text{if } x > 2. \\end{cases}\\] Find $a$ if $g$ is continuous."
+        },
+        {
+          "id": "L5_08",
+          "problem": "If $f(4) = 2$ and $f(3x) = 3f(x)$ for all $x$, find $f^{-1}(162)$."
+        },
+        {
+          "id": "L5_09",
+          "problem": "The roots of $x^2 + kx - 8 = 0$ differ by $\\sqrt{65}$. Find the greatest possible value of $k$."
+        },
+        {
+          "id": "L5_10",
+          "problem": "For real numbers $a$ and $b$, define $a \\diamond b = a + b + ab$. Given $a \\diamond 0 = a$ and $a \\diamond b = b \\diamond a$, find $7 \\diamond 8$."
+        },
+        {
+          "id": "L5_11",
+          "problem": "Find the largest integer $b$ such that $\\frac{4x^3 - 2x^2 + 5x + 3}{x^2 + bx + 9}$ has domain of all real numbers."
+        },
+        {
+          "id": "L5_12",
+          "problem": "Yusuf solved $5x^2 - 30x + 10 = 0$ by completing the square, obtaining $(x + r)^2 = s$. Find $r + s$."
+        },
+        {
+          "id": "L5_13",
+          "problem": "Let $a$ and $b$ be roots of $x^2 - nx + 3 = 0$. If $a + \\frac{1}{b}$ and $b + \\frac{1}{a}$ are roots of $x^2 - px + q = 0$, find $q$."
+        },
+        {
+          "id": "L5_14",
+          "problem": "Let $f(x) = 2x + 5$ and let $g(x) = f(f(f(f(x))))$. If the domain of $g$ is $0 \\le x \\le 1$, find the range of $g$."
+        },
+        {
+          "id": "L5_15",
+          "problem": "The values $a, b, c, d$ are 3, 4, 5, 6 in some order. Find the maximum value of $ab + bc + cd + da$."
+        },
+        {
+          "id": "L5_16",
+          "problem": "Find the absolute value of the difference of solutions of $x^2 - 7x + 11 = 0$."
+        },
+        {
+          "id": "L5_17",
+          "problem": "Given a quadratic $f(x)$ with vertex at $(2, -3)$ opening upward with $f(0) = 1$: Let $g(x) = -f(x)$ and $h(x) = f(-x)$. If $a$ is the number of intersection points of $f$ and $g$, and $b$ is the number of intersection points of $f$ and $h$, find $10a + b$."
+        },
+        {
+          "id": "L5_18",
+          "problem": "The terms $\\frac{1}{3}, x + 1, 4x - 1$ form an arithmetic sequence. Find $x$."
+        },
+        {
+          "id": "L5_19",
+          "problem": "A circle has its center on the $x$-axis and passes through $(2, 3)$ and $(5, 6)$. What is its radius?"
+        },
+        {
+          "id": "L5_20",
+          "problem": "A 25-gon $P_1$ has vertices whose $x$-coordinates sum to 125. The midpoints of its sides form $P_2$, and the midpoints of $P_2$'s sides form $P_3$. Find the sum of the $x$-coordinates of $P_3$'s vertices."
+        },
+        {
+          "id": "L5_21",
+          "problem": "Compute the range of $y = |x - 3| - |x + 4|$."
+        },
+        {
+          "id": "L5_22",
+          "problem": "Solve for positive $x$ in the arithmetic sequence: $2^2, x^2, 5^2, \\ldots$."
+        },
+        {
+          "id": "L5_23",
+          "problem": "The equation $a^5xy - a^4y - a^3x = a^2(b^3 - 1)$ is equivalent to $(a^mx - a^n)(a^py - a) = a^2b^3$. Find $mnp$."
+        },
+        {
+          "id": "L5_24",
+          "problem": "If positive numbers $x, y, z$ satisfy $x + \\frac{1}{y} = 5$, $y + \\frac{1}{z} = 2$, and $z + \\frac{1}{x} = \\frac{5}{2}$, find $xyz$."
+        },
+        {
+          "id": "L5_25",
+          "problem": "Let $f(x) = \\frac{x - 2}{x - 4}$. Define $g(x) = f(x + a)$. For what value of $a$ is $g(x)$ identical to $g^{-1}(x)$?"
+        }
+      ]
+    }
+  }
