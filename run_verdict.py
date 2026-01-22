@@ -16,7 +16,7 @@ import config.config_verdict as config_verdict
 from config.config_verdict import (
     DEBATE_RUN_ID as CONFIG_DEBATE_RUN_ID, 
     JUDGE_MODEL as CONFIG_JUDGE_MODEL, 
-    JUDGE_TEMPERATURE, JUDGE_REASONING_EFFORT, JUDGE_REASONING_MAX_TOKENS, 
+    JUDGE_TEMPERATURE, JUDGE_REASONING_EFFORT, JUDGE_REASONING_MAX_TOKENS, JUDGE_REASONING_ENABLED,
     MAX_OUTPUT_TOKENS, SKIP_QA, RERUN, SUBSET_N, SPECIFIC_RECORD_IDS, 
     MAX_THREADS, UPTO_TURNS, SKIP_DEBATER_QA
 )
@@ -53,6 +53,7 @@ def run_judge(question, options, public_debate_history_text, judge_template, res
         JUDGE_TEMPERATURE,
         reasoning_effort=JUDGE_REASONING_EFFORT,
         reasoning_max_tokens=JUDGE_REASONING_MAX_TOKENS,
+        reasoning_enabled=JUDGE_REASONING_ENABLED,
         max_tokens=MAX_OUTPUT_TOKENS,
         run_id=verdict_run_id,
         record_id=record_id,

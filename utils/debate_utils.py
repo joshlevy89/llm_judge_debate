@@ -121,6 +121,7 @@ def run_debate_turn(turn_num, debater_assignments, correct_idx, debater_idx, que
             DEBATER_TEMPERATURE,
             reasoning_effort=DEBATER_REASONING_EFFORT,
             reasoning_max_tokens=DEBATER_REASONING_MAX_TOKENS,
+            reasoning_enabled=REASONING_ENABLED,
             max_tokens=MAX_OUTPUT_TOKENS,
             run_id=run_id,
             record_id=record_id,
@@ -197,6 +198,7 @@ def get_llm_action(debate_history, question, options, interactive_judge, api_key
                 INTERACTIVE_JUDGE_TEMPERATURE,
                 reasoning_effort=INTERACTIVE_JUDGE_REASONING_EFFORT,
                 reasoning_max_tokens=INTERACTIVE_JUDGE_REASONING_MAX_TOKENS,
+                reasoning_enabled=INTERACTIVE_JUDGE_REASONING_ENABLED,
                 max_tokens=INTERACTIVE_JUDGE_MAX_OUTPUT_TOKENS)
         response_text = response['content']
     response_time = time.time() - start_time

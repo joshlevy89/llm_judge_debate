@@ -27,7 +27,7 @@ class RequestWithTimeout:
         except Exception as e:
             self.exception = e
 
-def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_tokens=None, top_p=None, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None):
+def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_tokens=None, top_p=None, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None, response_format=None):
     url = "https://openrouter.ai/api/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {api_key}",
@@ -46,6 +46,9 @@ def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_t
     
     if top_p is not None:
         data["top_p"] = top_p
+    
+    if response_format is not None:
+        data["response_format"] = response_format
     
     if reasoning_effort or reasoning_max_tokens:
         reasoning_config = {}
@@ -98,17 +101,19 @@ def _make_openrouter_request(prompt, model_name, api_key, temperature=0.0, max_t
             f"Response preview: {req.result.text[:500]}"
         )
 
-def call_openrouter(prompt, model_name, api_key, temperature=0.0, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None, max_tokens=None, top_p=None, run_id=None, record_id=None, context=None):
+def call_openrouter(prompt, model_name, api_key, temperature=0.0, reasoning_effort=None, reasoning_max_tokens=None, reasoning_enabled=None, max_tokens=None, top_p=None, response_format=None, run_id=None, record_id=None, context=None):
     for attempt in range(MAX_RETRIES + 1):
         try:
-            response_json = _make_openrouter_request(prompt, model_name, api_key, temperature, max_tokens, top_p, reasoning_effort, reasoning_max_tokens, reasoning_enabled)
+            response_json = _make_openrouter_request(prompt, model_name, api_key, temperature, max_tokens, top_p, reasoning_effort, reasoning_max_tokens, reasoning_enabled, response_format)
             
             if 'choices' in response_json and len(response_json['choices']) > 0:
-                message = response_json['choices'][0]['message']
+                choice = response_json['choices'][0]
+                message = choice['message']
                 return {
                     'content': message.get('content'),
                     'reasoning': message.get('reasoning'),
-                    'reasoning_details': message.get('reasoning_details')
+                    'reasoning_details': message.get('reasoning_details'),
+                    'finish_reason': choice.get('finish_reason')
                 }, response_json.get('usage', {})
             
             error_text = response_json.get('error', {}).get('message', 'Unknown error') if 'error' in response_json else 'No response from model'
