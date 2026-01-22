@@ -1,13 +1,19 @@
 """
-Evaluate generated questions with Gemini 3 Flash (validator) and Llama 3.1 8B.
+Evaluate augmented math questions with Llama 3.1 8B judge.
 
-Runs each model on the multiple choice questions and parses their answers.
-Ground truth is established when both generator and validator agree.
+Step 2 of the augmented math pipeline:
+1. Load augmented_math_*.json (output from generate_questions.py)
+2. Filter to questions with ground truth (generator-validator agreement)
+3. Either binarize (2-choice) or use all 10 options
+4. Run Llama 3.1 8B on each question
+5. Record accuracy
+
+Output: llama_{mode}_{timestamp}.json
 """
 
 import os
-import re
 import json
+import random
 import argparse
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -19,46 +25,18 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.llm_utils import call_openrouter, get_openrouter_key_info, parse_answer
 
-# Load prompts
 PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "prompts")
 with open(os.path.join(PROMPTS_DIR, "qa_prompts.yaml")) as f:
     QA_PROMPTS = yaml.safe_load(f)
 with open(os.path.join(PROMPTS_DIR, "shared_prompts.yaml")) as f:
     SHARED_PROMPTS = yaml.safe_load(f)
 
-# Model configurations
-MODELS = {
-    "gemini_validator": {
-        "id": "google/gemini-3-flash-preview",
-        "reasoning_max_tokens": 5000,
-        "max_tokens": 15000
-    },
-    "llama": {
-        "id": "meta-llama/llama-3.1-8b-instruct",
-        "max_tokens": 20000
-    }
-}
-
-# OLD PROMPT - commented out for testing structured prompts
-# MC_PROMPT = """Answer the following multiple choice math problem.
-#
-# Problem:
-# {question}
-#
-# Options:
-# {options}
-#
-# Think through the problem step by step, then provide your final answer.
-# Your final answer MUST be on its own line in exactly this format:
-# ANSWER: <single digit 0-9>
-#
-# For example, if you think option 3 is correct, write:
-# ANSWER: 3"""
+JUDGE_MODEL = "meta-llama/llama-3.1-8b-instruct"
+MAX_THREADS = 200
 
 
-def build_prompt(question, options_text):
-    """Build prompt using structured templates from yaml files."""
-    response_format = SHARED_PROMPTS["response_format_prompt"].replace("{N}", str(len(options_text.split("\n"))))
+def build_prompt(question, options_text, num_options):
+    response_format = SHARED_PROMPTS["response_format_prompt"].replace("{N}", str(num_options))
     return QA_PROMPTS["qa_prompt_template"].format(
         question=question,
         options_text=options_text,
@@ -66,176 +44,229 @@ def build_prompt(question, options_text):
     )
 
 
-def format_options(options):
-    """Format options as numbered list."""
-    return "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
-
-
-# OLD PARSER - commented out for testing structured prompts
-# def parse_mc_answer(response_text):
-#     """Parse the model's MC answer from response."""
-#     if not response_text:
-#         return None
-#     
-#     # Look for "ANSWER: X" pattern
-#     match = re.search(r"ANSWER:\s*(\d)", response_text, re.IGNORECASE)
-#     if match:
-#         return int(match.group(1))
-#     
-#     # Fallback: look for standalone digit at end
-#     lines = response_text.strip().split("\n")
-#     for line in reversed(lines):
-#         line = line.strip()
-#         if line.isdigit() and len(line) == 1:
-#             return int(line)
-#     
-#     return None
-
-
-def evaluate_question(question_data, model_name, model_config, api_key):
-    """Run a single model on a question."""
-    options_text = format_options(question_data["options"])
-    prompt = build_prompt(question_data["question"], options_text)
+def binarize_question(question_data, rng):
+    """Convert 10-option question to 2-option (correct + 1 random incorrect)."""
+    gt_idx = question_data["ground_truth"]
+    correct_answer = question_data["options"][gt_idx]
     
-    kwargs = {
-        "max_tokens": model_config["max_tokens"]
-    }
-    if "reasoning_effort" in model_config:
-        kwargs["reasoning_effort"] = model_config["reasoning_effort"]
-    if "reasoning_max_tokens" in model_config:
-        kwargs["reasoning_max_tokens"] = model_config["reasoning_max_tokens"]
+    wrong_options = [opt for i, opt in enumerate(question_data["options"]) if i != gt_idx]
+    wrong_answer = rng.choice(wrong_options)
+    
+    binary_options = [correct_answer, wrong_answer]
+    rng.shuffle(binary_options)
+    binary_gt_idx = binary_options.index(correct_answer)
+    
+    return binary_options, binary_gt_idx
+
+
+def evaluate_question(question_text, options, api_key):
+    options_text = "\n".join(f"{i}. {opt}" for i, opt in enumerate(options))
+    prompt = build_prompt(question_text, options_text, len(options))
     
     response, usage = call_openrouter(
-        prompt, model_config["id"], api_key,
+        prompt, JUDGE_MODEL, api_key,
         temperature=0.5,
-        **kwargs
+        max_tokens=20000
     )
     
     content = response.get("content") or ""
     parsed = parse_answer(content, lenient=True)
     
-    return {
-        "model": model_name,
-        "answer": parsed["answer"],
-        "confidence": parsed["confidence"],
-        "reasoning": parsed["reasoning"],
-        "raw_content": content,
-        "usage": usage
-    }
+    # Validate answer is in valid range [0, N-1]
+    answer = parsed["answer"]
+    if answer is not None and (answer < 0 or answer >= len(options)):
+        answer = None
+    
+    return answer, parsed["confidence"], content, usage
 
 
-def process_question(idx, question_data, api_key):
-    """Evaluate a question with all models."""
-    evaluations = {}
+def process_question_binary(idx, question_data, api_key, rng_seed):
+    """Process question in binary (2-choice) mode."""
+    rng = random.Random(rng_seed)
     
-    for model_name, model_config in MODELS.items():
-        try:
-            result = evaluate_question(question_data, model_name, model_config, api_key)
-            evaluations[model_name] = result
-        except Exception as e:
-            evaluations[model_name] = {
-                "model": model_name,
-                "answer": None,
-                "error": str(e)
-            }
-    
-    return {
-        "idx": idx,
-        "level": question_data["level"],
-        "subject": question_data["subject"],
-        "question": question_data["question"],
-        "options": question_data["options"],
-        "generator_answer_idx": question_data["correct_idx"],
-        "evaluations": evaluations
-    }
+    try:
+        binary_options, binary_gt_idx = binarize_question(question_data, rng)
+        llama_answer, confidence, raw_content, usage = evaluate_question(
+            question_data["question"], binary_options, api_key
+        )
+        
+        is_correct = llama_answer == binary_gt_idx if llama_answer is not None else None
+        
+        return {
+            "idx": idx,
+            "level": question_data["level"],
+            "subject": question_data["subject"],
+            "question": question_data["question"],
+            "options": binary_options,
+            "gt_idx": binary_gt_idx,
+            "llama_answer": llama_answer,
+            "llama_confidence": confidence,
+            "is_correct": is_correct,
+            "raw_content": raw_content,
+            "usage": usage
+        }, "ok"
+        
+    except Exception as e:
+        return {
+            "idx": idx,
+            "level": question_data["level"],
+            "subject": question_data["subject"],
+            "question": question_data["question"],
+            "error": str(e)
+        }, f"exception: {type(e).__name__}"
+
+
+def process_question_ten(idx, question_data, api_key, rng_seed):
+    """Process question in 10-choice mode."""
+    try:
+        options = question_data["options"]
+        gt_idx = question_data["ground_truth"]
+        
+        llama_answer, confidence, raw_content, usage = evaluate_question(
+            question_data["question"], options, api_key
+        )
+        
+        is_correct = llama_answer == gt_idx if llama_answer is not None else None
+        
+        return {
+            "idx": idx,
+            "level": question_data["level"],
+            "subject": question_data["subject"],
+            "question": question_data["question"],
+            "options": options,
+            "gt_idx": gt_idx,
+            "llama_answer": llama_answer,
+            "llama_confidence": confidence,
+            "is_correct": is_correct,
+            "raw_content": raw_content,
+            "usage": usage
+        }, "ok"
+        
+    except Exception as e:
+        return {
+            "idx": idx,
+            "level": question_data["level"],
+            "subject": question_data["subject"],
+            "question": question_data["question"],
+            "error": str(e)
+        }, f"exception: {type(e).__name__}"
 
 
 def main():
     load_dotenv()
     
-    parser = argparse.ArgumentParser(description="Evaluate questions with Grok and Llama")
-    parser.add_argument("questions_file", help="Path to questions JSON file")
-    parser.add_argument("--max-threads", type=int, default=200, help="Max parallel threads")
+    parser = argparse.ArgumentParser(description="Evaluate augmented math with Llama judge")
+    parser.add_argument("input_file", help="Path to augmented_math_*.json")
+    parser.add_argument("--mode", choices=["binary", "ten"], default="binary",
+                        help="Evaluation mode: 'binary' (2-choice) or 'ten' (10-choice)")
+    parser.add_argument("--max-threads", type=int, default=MAX_THREADS, help="Max parallel threads")
     args = parser.parse_args()
     
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         raise ValueError("Set OPENROUTER_API_KEY environment variable")
     
-    # Load questions and filter out invalid ones
-    with open(args.questions_file) as f:
-        all_questions = json.load(f)
+    with open(args.input_file) as f:
+        data = json.load(f)
     
-    # Validate questions - must have required fields
-    questions = []
-    for q in all_questions:
-        if (q.get("question") and 
-            q.get("options") and 
-            len(q["options"]) > 0 and
-            q.get("correct_idx") is not None and
-            0 <= q["correct_idx"] < len(q["options"])):
-            questions.append(q)
+    all_questions = data["questions"]
+    input_metadata = data["metadata"]
     
-    skipped = len(all_questions) - len(questions)
-    print(f"Loaded {len(questions)} valid questions ({skipped} skipped as invalid)")
+    questions_with_gt = [q for q in all_questions if q["ground_truth"] is not None]
+    print(f"Loaded {len(all_questions)} questions, {len(questions_with_gt)} have ground truth")
+    print(f"Judge model: {JUDGE_MODEL}")
+    print(f"Mode: {args.mode} ({'2-choice' if args.mode == 'binary' else '10-choice'})")
     
-    # Track cost
     key_info_start = get_openrouter_key_info(api_key)
     start_usage = key_info_start.get("data", {}).get("usage", 0) if key_info_start else 0
     
-    # Evaluate
     results = []
     completed = 0
+    failed = 0
+    total_usage = {"prompt_tokens": 0, "completion_tokens": 0}
+    
+    base_rng = random.Random(42)
+    task_seeds = [base_rng.randint(0, 2**31) for _ in questions_with_gt]
+    
+    process_fn = process_question_binary if args.mode == "binary" else process_question_ten
     
     with ThreadPoolExecutor(max_workers=args.max_threads) as executor:
         futures = {
-            executor.submit(process_question, idx, q, api_key): idx
-            for idx, q in enumerate(questions)
+            executor.submit(process_fn, idx, q, api_key, task_seeds[idx]): idx
+            for idx, q in enumerate(questions_with_gt)
         }
         
         for future in as_completed(futures):
             idx = futures[future]
             try:
-                result = future.result()
+                result, status = future.result()
                 results.append(result)
+                
+                if "usage" in result:
+                    for k in total_usage:
+                        total_usage[k] += result["usage"].get(k, 0)
+                
                 completed += 1
-                
-                validator_ans = result["evaluations"].get("gemini_validator", {}).get("answer")
-                llama_ans = result["evaluations"].get("llama", {}).get("answer")
-                generator_ans = result["generator_answer_idx"]
-                
-                print(f"[{completed}/{len(questions)}] Q{idx} - Generator:{generator_ans} Validator:{validator_ans} Llama:{llama_ans}")
-                
+                if status == "ok":
+                    tag = f"L{result['level']}/{result['subject']}"
+                    correct_str = "correct" if result.get("is_correct") else ("null" if result.get("llama_answer") is None else "wrong")
+                    print(f"  [OK {completed}/{len(questions_with_gt)}] {tag} llama:{result.get('llama_answer')} gt:{result.get('gt_idx')} ({correct_str})")
+                else:
+                    failed += 1
+                    print(f"  [FAIL {completed}/{len(questions_with_gt)}] {status}")
+                    
             except Exception as e:
-                print(f"[!] Q{idx} failed: {e}")
+                failed += 1
+                print(f"  [FAIL] {type(e).__name__}: {str(e)[:50]}")
     
-    # Sort by original index
     results.sort(key=lambda x: x["idx"])
     
-    # Save results
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    base_name = os.path.basename(args.questions_file).replace(".json", "")
-    output_path = os.path.join(os.path.dirname(args.questions_file), f"evaluations_{base_name}_{timestamp}.json")
-    
-    with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-    
-    # Report
     key_info_end = get_openrouter_key_info(api_key)
     end_usage = key_info_end.get("data", {}).get("usage", 0) if key_info_end else 0
-    cost = end_usage - start_usage
+    total_cost = end_usage - start_usage
     
-    # Quick agreement stats
-    generator_validator_agree = sum(
-        1 for r in results
-        if r["generator_answer_idx"] == r["evaluations"].get("gemini_validator", {}).get("answer")
-    )
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = os.path.join(os.path.dirname(__file__), "data", f"llama_{args.mode}_{timestamp}.json")
+    
+    error_count = sum(1 for r in results if "error" in r)
+    null_count = sum(1 for r in results if r.get("llama_answer") is None and "error" not in r)
+    valid_results = [r for r in results if "is_correct" in r and r["is_correct"] is not None]
+    correct_count = sum(1 for r in valid_results if r["is_correct"])
+    
+    num_choices = 2 if args.mode == "binary" else 10
+    output_data = {
+        "metadata": {
+            "input_file": os.path.basename(args.input_file),
+            "input_metadata": input_metadata,
+            "judge_model": JUDGE_MODEL,
+            "mode": args.mode,
+            "num_choices": num_choices,
+            "timestamp": timestamp,
+            "total_evaluated": len(results),
+            "total_errors": error_count,
+            "total_nulls": null_count,
+            "total_valid": len(valid_results),
+            "total_correct": correct_count,
+            "accuracy": correct_count / len(valid_results) if valid_results else None,
+            "judge_usage": total_usage,
+            "total_cost": total_cost
+        },
+        "results": results
+    }
+    
+    with open(output_path, "w") as f:
+        json.dump(output_data, f, indent=2)
     
     print(f"\n{'='*50}")
-    print(f"Evaluated {len(results)} questions")
-    print(f"Generator-Validator agreement: {generator_validator_agree}/{len(results)} ({100*generator_validator_agree/len(results):.1f}%)")
+    print(f"Results breakdown ({args.mode} mode):")
+    print(f"  Total with GT:    {len(questions_with_gt)}")
+    print(f"  API errors:       {error_count} ({100*error_count/len(results):.1f}%)")
+    print(f"  Parse nulls:      {null_count} ({100*null_count/len(results):.1f}%)")
+    print(f"  Valid answers:    {len(valid_results)} ({100*len(valid_results)/len(results):.1f}%)")
+    print(f"Llama accuracy: {correct_count}/{len(valid_results)} ({100*correct_count/len(valid_results):.1f}%)" if valid_results else "No valid results")
+    print(f"Random baseline: {100/num_choices:.1f}%")
     print(f"Saved to: {output_path}")
-    print(f"Total cost: ${cost:.4f}")
+    print(f"Total cost: ${total_cost:.4f}")
 
 
 if __name__ == "__main__":
