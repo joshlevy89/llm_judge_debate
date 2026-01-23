@@ -24,11 +24,10 @@ def extract_config(config_module):
     return config
 
 
-def load_prompts(prompt_type):
+def load_prompts(prompt_type, variant=None):
     if prompt_type == 'debate':
         with open('prompts/debater_prompts.yaml', 'r') as f:
             prompts = yaml.safe_load(f)
-        # return prompts['debater_prompt_template'], prompts['private_reasoning_prompt']
         return prompts
     elif prompt_type == 'interactive':
         with open('prompts/interactive_prompts.yaml', 'r') as f:
@@ -41,6 +40,10 @@ def load_prompts(prompt_type):
     elif prompt_type == 'shared':
         with open('prompts/shared_prompts.yaml', 'r') as f:
             prompts = yaml.safe_load(f)
+        if variant == 'simple':
+            return prompts['response_format_prompt_simple']
+        elif variant == 'simple_no_thinking':
+            return prompts['response_format_prompt_simple_no_thinking']
         return prompts['response_format_prompt']
     elif prompt_type == 'qa':
         with open('prompts/qa_prompts.yaml', 'r') as f:

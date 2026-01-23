@@ -26,6 +26,14 @@ DATASET_SUBSET = "gpqa_diamond"
 # DATASET_SUBSET = "gpqa_main"
 DATASET_SPLIT = "train"
 DATASET_FILTERS = None
+DATASET_PATH = None  # Only used when DATASET_NAME = "local"
+
+# Local dataset example (llama_binary):
+# DATASET_NAME = "local"
+# DATASET_SUBSET = None
+# DATASET_SPLIT = None
+# DATASET_FILTERS = None
+# DATASET_PATH = "datasets/data/llama_binary_20260123_094608.json"
 
 # DATASET_NAME = "m-a-p/SuperGPQA"
 # DATASET_SUBSET = None

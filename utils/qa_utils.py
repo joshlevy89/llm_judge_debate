@@ -7,9 +7,8 @@ import traceback
 from pathlib import Path
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datasets import load_dataset
 from utils.llm_utils import call_openrouter, get_openrouter_key_info, parse_answer, log_progress
-from utils.dataset_utils import select_questions_and_options, format_options
+from utils.dataset_utils import select_questions_and_options, format_options, load_dataset_unified
 from utils.shared_utils import generate_run_id, load_prompts
 
 
@@ -24,9 +23,9 @@ def load_specific_question_idxs(specific_question_idxs):
             return [int(line.strip()) for line in f if line.strip()]
     return specific_question_idxs
 
-def format_qa_prompt(question, options, num_choices):
+def format_qa_prompt(question, options, num_choices, prompt_format=None):
     prompt_template = load_prompts('qa')
-    response_format_prompt = load_prompts('shared')
+    response_format_prompt = load_prompts('shared', variant=prompt_format)
     options_text = format_options(options)
     number_choices = ', '.join(str(i) for i in range(num_choices))
     
@@ -74,11 +73,11 @@ def get_existing_qa_keys(qa_results_path):
                 existing_qa.add(key)
     return existing_qa
 
-def filter_existing_questions(question_idxs, questions_data, model_name, num_choices, existing_qa, reasoning_effort=None, reasoning_max_tokens=None):
+def filter_existing_questions(question_idxs, questions_data, model_name, num_choices, existing_qa, reasoning_effort=None, reasoning_max_tokens=None, prompt_format=None):
     missing_idxs = []
     
     for idx, q_data in zip(question_idxs, questions_data):
-        prompt = format_qa_prompt(q_data['question'], q_data['options'], num_choices)
+        prompt = format_qa_prompt(q_data['question'], q_data['options'], num_choices, prompt_format)
         key = (idx, model_name, normalize_whitespace(prompt), reasoning_effort, reasoning_max_tokens)
         
         if key not in existing_qa:
@@ -86,11 +85,11 @@ def filter_existing_questions(question_idxs, questions_data, model_name, num_cho
     
     return missing_idxs
 
-def process_qa_question(q_data, prompt_template_str, api_key, config, run_id, run_datetime, model_name, temperature, max_tokens, reasoning_effort, reasoning_max_tokens, reasoning_enabled, num_choices):
+def process_qa_question(q_data, prompt_template_str, api_key, config, run_id, run_datetime, model_name, temperature, max_tokens, reasoning_effort, reasoning_max_tokens, reasoning_enabled, num_choices, prompt_format=None):
     from utils.shared_utils import generate_run_id
     
     record_id = generate_run_id()
-    prompt = format_qa_prompt(q_data['question'], q_data['options'], num_choices)
+    prompt = format_qa_prompt(q_data['question'], q_data['options'], num_choices, prompt_format)
     
     response, token_usage = call_openrouter(
         prompt,
@@ -130,7 +129,7 @@ def process_qa_question(q_data, prompt_template_str, api_key, config, run_id, ru
         'token_usage': token_usage
     }
 
-def run_qa_for_questions(question_idxs, model_name, temperature, max_tokens, reasoning_effort, reasoning_max_tokens, dataset_config, num_choices, api_key, max_threads, run_id=None, qa_results_path=None, random_seed=None, reasoning_enabled=None):
+def run_qa_for_questions(question_idxs, model_name, temperature, max_tokens, reasoning_effort, reasoning_max_tokens, dataset_config, num_choices, api_key, max_threads, run_id=None, qa_results_path=None, random_seed=None, reasoning_enabled=None, prompt_format=None):
     if run_id is None:
         run_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=7))
     
@@ -140,7 +139,12 @@ def run_qa_for_questions(question_idxs, model_name, temperature, max_tokens, rea
     qa_results_path.parent.mkdir(parents=True, exist_ok=True)
     run_datetime = datetime.now().isoformat()
     
-    dataset = load_dataset(dataset_config['dataset_name'], dataset_config['dataset_subset'])[dataset_config['dataset_split']]
+    dataset, _ = load_dataset_unified(
+        dataset_config['dataset_name'], 
+        dataset_config.get('dataset_subset'),
+        dataset_config.get('dataset_split'),
+        dataset_config.get('dataset_path')
+    )
     questions_data = select_questions_and_options(
         dataset_config['dataset_name'], 
         dataset, 
@@ -151,7 +155,7 @@ def run_qa_for_questions(question_idxs, model_name, temperature, max_tokens, rea
     )
     
     prompt_template = load_prompts('qa')
-    config = {**dataset_config, 'model_name': model_name, 'temperature': temperature, 'max_tokens': max_tokens, 'reasoning_effort': reasoning_effort, 'reasoning_max_tokens': reasoning_max_tokens, 'reasoning_enabled': reasoning_enabled, 'num_choices': num_choices, 'random_seed': random_seed}
+    config = {**dataset_config, 'model_name': model_name, 'temperature': temperature, 'max_tokens': max_tokens, 'reasoning_effort': reasoning_effort, 'reasoning_max_tokens': reasoning_max_tokens, 'reasoning_enabled': reasoning_enabled, 'num_choices': num_choices, 'random_seed': random_seed, 'prompt_format': prompt_format}
     
     key_info_start = get_openrouter_key_info(api_key)
     start_usage = key_info_start.get('data', {}).get('usage', 0) if key_info_start else 0
@@ -161,7 +165,7 @@ def run_qa_for_questions(question_idxs, model_name, temperature, max_tokens, rea
     
     with ThreadPoolExecutor(max_workers=max_threads) as executor:
         futures = {
-            executor.submit(process_qa_question, q_data, prompt_template, api_key, config, run_id, run_datetime, model_name, temperature, max_tokens, reasoning_effort, reasoning_max_tokens, reasoning_enabled, num_choices): q_data
+            executor.submit(process_qa_question, q_data, prompt_template, api_key, config, run_id, run_datetime, model_name, temperature, max_tokens, reasoning_effort, reasoning_max_tokens, reasoning_enabled, num_choices, prompt_format): q_data
             for q_data in questions_data
         }
         

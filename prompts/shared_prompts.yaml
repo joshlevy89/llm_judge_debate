@@ -32,5 +32,30 @@ response_format_prompt: |
   Be very careful not to omit the </END FINAL ANSWER> tag.
   Note: your answer must be the INDEX of the correct answer in the OPTIONS list, not the answer itself, and not considering any other choices that may be presented in the question. 
   Important: We use 0-indexing for the options list!! For example, if the options are 0. X, 1. Y and you believe the answer is Y, you should output 1.
-  Before you being the final answer, think through in your think through these indexing instructions to ensure you are outputting the correct index! 
+  Before you being the final answer, think through in your think through these indexing instructions to ensure you are outputting the correct index!
+
+
+response_format_prompt_simple: |
+  You may do some initial thinking about the question. You can use:
+  <BEGIN THINKING>
+  <your thinking here>
+  </END THINKING>
+  
+  After thinking, your final answer should be in the following format:
+  <BEGIN FINAL ANSWER>
+  Answer: X
+  </END FINAL ANSWER>
+  
+  X must be the INDEX (0-indexed) of the correct answer in the OPTIONS list.
+  Your response MUST contain both the <BEGIN FINAL ANSWER> and </END FINAL ANSWER> tags.
+
+
+response_format_prompt_simple_no_thinking: |
+  Your answer should be in the following format:
+  <BEGIN FINAL ANSWER>
+  Answer: X
+  </END FINAL ANSWER>
+  
+  X must be the INDEX (0-indexed) of the correct answer in the OPTIONS list.
+  Your response MUST contain both the <BEGIN FINAL ANSWER> and </END FINAL ANSWER> tags. 
 

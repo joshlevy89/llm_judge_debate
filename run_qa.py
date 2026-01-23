@@ -4,14 +4,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 import config.config_qa as config_qa
 from config.config_qa import (
-    DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT, DATASET_FILTERS,
+    DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT, DATASET_FILTERS, DATASET_PATH,
     MODEL_NAME, TEMPERATURE, MAX_TOKENS,
     REASONING_EFFORT, REASONING_MAX_TOKENS, REASONING_ENABLED,
     NUM_QUESTIONS, RANDOM_SEED, NUM_CHOICES,
-    SPECIFIC_QUESTION_IDXS, MAX_THREADS, RERUN
+    SPECIFIC_QUESTION_IDXS, MAX_THREADS, RERUN, PROMPT_FORMAT
 )
-from datasets import load_dataset
-from utils.dataset_utils import select_questions_and_options
+from utils.dataset_utils import select_questions_and_options, load_dataset_unified
 from utils.shared_utils import extract_config
 from utils.qa_utils import run_qa_for_questions, get_existing_qa_keys, filter_existing_questions, load_specific_question_idxs
 
@@ -25,12 +24,16 @@ def main():
     dataset_config = extract_config(config_qa)
     
     print(f"Results will be appended to: {results_path}")
-    print(f"Loading dataset: {DATASET_NAME}/{DATASET_SUBSET}")
+    if DATASET_NAME == "local":
+        print(f"Loading local dataset: {DATASET_PATH}")
+    else:
+        print(f"Loading dataset: {DATASET_NAME}/{DATASET_SUBSET}")
     print(f"Using dataset filters {DATASET_FILTERS}")
     
-    dataset = load_dataset(DATASET_NAME, DATASET_SUBSET)[DATASET_SPLIT]
+    dataset, metadata = load_dataset_unified(DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT, DATASET_PATH)
     
-    dataset = dataset.add_column('_original_idx', range(len(dataset)))
+    if DATASET_NAME != "local":
+        dataset = dataset.add_column('_original_idx', range(len(dataset)))
     
     if DATASET_FILTERS:
         dataset = dataset.filter(lambda x: all(x.get(k) in v if isinstance(v, list) else x.get(k) == v for k, v in DATASET_FILTERS.items()))
@@ -44,13 +47,20 @@ def main():
         import random
         rng = random.Random(RANDOM_SEED)
         filtered_idxs = rng.sample(range(len(dataset)), min(NUM_QUESTIONS, len(dataset)))
-        question_idxs = [dataset[idx]['_original_idx'] for idx in filtered_idxs]
+        if DATASET_NAME == "local":
+            question_idxs = [dataset[idx].get('idx', idx) for idx in filtered_idxs]
+        else:
+            question_idxs = [dataset[idx]['_original_idx'] for idx in filtered_idxs]
     
     if not RERUN:
-        unfiltered_dataset = load_dataset(DATASET_NAME, DATASET_SUBSET)[DATASET_SPLIT]
+        if DATASET_NAME == "local":
+            unfiltered_dataset, _ = load_dataset_unified(DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT, DATASET_PATH)
+        else:
+            from datasets import load_dataset
+            unfiltered_dataset = load_dataset(DATASET_NAME, DATASET_SUBSET)[DATASET_SPLIT]
         existing_qa = get_existing_qa_keys(results_path)
         questions_data = select_questions_and_options(DATASET_NAME, unfiltered_dataset, len(question_idxs), NUM_CHOICES, None, question_idxs)
-        question_idxs = filter_existing_questions(question_idxs, questions_data, MODEL_NAME, NUM_CHOICES, existing_qa, REASONING_EFFORT, REASONING_MAX_TOKENS)
+        question_idxs = filter_existing_questions(question_idxs, questions_data, MODEL_NAME, NUM_CHOICES, existing_qa, REASONING_EFFORT, REASONING_MAX_TOKENS, PROMPT_FORMAT)
         
         if not question_idxs:
             print("All questions already have QA results. Nothing to run. Can set RERUN = True to rerun.")
@@ -74,7 +84,8 @@ def main():
         api_key=api_key,
         max_threads=MAX_THREADS,
         qa_results_path=results_path,
-        random_seed=RANDOM_SEED
+        random_seed=RANDOM_SEED,
+        prompt_format=PROMPT_FORMAT
     )
     
     duration = time.time() - start_time

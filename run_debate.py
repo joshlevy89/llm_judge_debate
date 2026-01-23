@@ -9,12 +9,11 @@ import time
 from datetime import datetime
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datasets import load_dataset
 from dotenv import load_dotenv
 import config.config_debate as config_debate
 from config.config_debate import *
 from utils.llm_utils import call_openrouter, get_openrouter_key_info, log_progress
-from utils.dataset_utils import select_questions_and_options, format_options
+from utils.dataset_utils import select_questions_and_options, format_options, load_dataset_unified
 from utils.debate_utils import *
 from utils.shared_utils import extract_config, generate_run_id, load_prompts
 
@@ -39,9 +38,15 @@ def main():
     print(f"Datetime: {run_datetime}")
     print(f"Results: {results_path}")
     
-    dataset = load_dataset(DATASET_NAME, DATASET_SUBSET)[DATASET_SPLIT]
+    if DATASET_NAME == "local":
+        print(f"Loading local dataset: {DATASET_PATH}")
+    else:
+        print(f"Loading dataset: {DATASET_NAME}/{DATASET_SUBSET}")
     
-    dataset = dataset.add_column('_original_idx', range(len(dataset)))
+    dataset, metadata = load_dataset_unified(DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT, DATASET_PATH)
+    
+    if DATASET_NAME != "local":
+        dataset = dataset.add_column('_original_idx', range(len(dataset)))
     
     if DATASET_FILTERS:
         dataset = dataset.filter(lambda x: all(x.get(k) in v if isinstance(v, list) else x.get(k) == v for k, v in DATASET_FILTERS.items()))
@@ -54,9 +59,16 @@ def main():
         print(f"Selecting {NUM_QUESTIONS} questions with seed {RANDOM_SEED}")
         rng = random.Random(RANDOM_SEED)
         filtered_idxs = rng.sample(range(len(dataset)), min(NUM_QUESTIONS, len(dataset)))
-        question_idxs = [dataset[idx]['_original_idx'] for idx in filtered_idxs]
+        if DATASET_NAME == "local":
+            question_idxs = [dataset[idx].get('idx', idx) for idx in filtered_idxs]
+        else:
+            question_idxs = [dataset[idx]['_original_idx'] for idx in filtered_idxs]
     
-    unfiltered_dataset = load_dataset(DATASET_NAME, DATASET_SUBSET)[DATASET_SPLIT]
+    if DATASET_NAME == "local":
+        unfiltered_dataset, _ = load_dataset_unified(DATASET_NAME, DATASET_SUBSET, DATASET_SPLIT, DATASET_PATH)
+    else:
+        from datasets import load_dataset
+        unfiltered_dataset = load_dataset(DATASET_NAME, DATASET_SUBSET)[DATASET_SPLIT]
     questions_data = select_questions_and_options(DATASET_NAME, unfiltered_dataset, len(question_idxs), NUM_CHOICES, None, specific_idxs=question_idxs)
     
     key_info_start = get_openrouter_key_info(api_key)
