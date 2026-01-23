@@ -172,8 +172,9 @@ def main():
     all_questions = data["questions"]
     input_metadata = data["metadata"]
     
-    questions_with_gt = [q for q in all_questions if q["ground_truth"] is not None]
-    print(f"Loaded {len(all_questions)} questions, {len(questions_with_gt)} have ground truth")
+    # Filter to valid questions (supports both old format with just ground_truth and new format with valid flag)
+    questions_with_gt = [q for q in all_questions if q.get("valid", q.get("ground_truth") is not None)]
+    print(f"Loaded {len(all_questions)} questions, {len(questions_with_gt)} valid for evaluation")
     print(f"Judge model: {JUDGE_MODEL}")
     print(f"Mode: {args.mode} ({'2-choice' if args.mode == 'binary' else '10-choice'})")
     
